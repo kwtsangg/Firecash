@@ -1,4 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom";
+import { useState } from "react";
+import { Selector } from "../components/Selectors";
 
 const navigation = [
   { label: "Dashboard", to: "/dashboard" },
@@ -8,14 +10,33 @@ const navigation = [
 ];
 
 export default function DashboardLayout() {
+  const [account, setAccount] = useState("Primary Account");
+  const [group, setGroup] = useState("All Groups");
+  const [currency, setCurrency] = useState("USD");
+
   return (
     <div className="app-shell">
       <header className="top-nav">
         <div className="logo">Firecash</div>
         <div className="nav-actions">
-          <button className="pill">Primary Account</button>
-          <button className="pill">All Groups</button>
-          <button className="pill">USD</button>
+          <Selector
+            label="Account"
+            value={account}
+            options={["Primary Account", "Retirement", "Side Hustle"]}
+            onChange={setAccount}
+          />
+          <Selector
+            label="Group"
+            value={group}
+            options={["All Groups", "Investments", "Cashflow"]}
+            onChange={setGroup}
+          />
+          <Selector
+            label="Currency"
+            value={currency}
+            options={["USD", "EUR", "GBP", "JPY"]}
+            onChange={setCurrency}
+          />
         </div>
       </header>
       <aside className="sidebar">

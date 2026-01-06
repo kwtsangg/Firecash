@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: ./backend
+    ports:
+      - "8080:8080"
+    environment:
+      RUST_LOG: info
+    depends_on:
+      - db
+
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: firecash
+      POSTGRES_PASSWORD: firecash
+      POSTGRES_DB: firecash
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

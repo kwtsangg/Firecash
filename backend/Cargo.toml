@@ -1,0 +1,12 @@
+[package]
+name = "firecash-api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.7"
+dotenvy = "0.15"
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.36", features = ["rt-multi-thread", "macros"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -200,6 +200,84 @@ pub struct UpdateAssetRequest {
 }
 
 #[derive(Serialize, FromRow)]
+pub struct Budget {
+    pub id: Uuid,
+    pub name: String,
+    pub currency_code: String,
+    pub amount: f64,
+    pub period_interval: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Deserialize)]
+pub struct CreateBudgetRequest {
+    pub name: String,
+    pub currency_code: String,
+    pub amount: f64,
+    pub period_interval: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateBudgetRequest {
+    pub name: Option<String>,
+    pub currency_code: Option<String>,
+    pub amount: Option<f64>,
+    pub period_interval: Option<String>,
+}
+
+#[derive(Serialize, FromRow)]
+pub struct BudgetPeriod {
+    pub id: Uuid,
+    pub budget_id: Uuid,
+    pub period_start: NaiveDate,
+    pub period_end: NaiveDate,
+    pub budgeted_amount: f64,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Serialize)]
+pub struct BudgetPeriodStatus {
+    pub period_id: Uuid,
+    pub period_start: NaiveDate,
+    pub period_end: NaiveDate,
+    pub budgeted_amount: f64,
+    pub spent_amount: f64,
+    pub is_over_budget: bool,
+}
+
+#[derive(Serialize)]
+pub struct BudgetWithStatus {
+    pub id: Uuid,
+    pub name: String,
+    pub currency_code: String,
+    pub amount: f64,
+    pub period_interval: String,
+    pub created_at: DateTime<Utc>,
+    pub current_period: BudgetPeriodStatus,
+}
+
+#[derive(Serialize, FromRow)]
+pub struct BudgetAlertRule {
+    pub id: Uuid,
+    pub budget_id: Uuid,
+    pub threshold_type: String,
+    pub threshold_value: f64,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Deserialize)]
+pub struct CreateBudgetAlertRuleRequest {
+    pub threshold_type: String,
+    pub threshold_value: f64,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateBudgetAlertRuleRequest {
+    pub threshold_type: Option<String>,
+    pub threshold_value: Option<f64>,
+}
+
+#[derive(Serialize, FromRow)]
 pub struct UpdateAssetResponse {
     pub id: Uuid,
     pub account_id: Uuid,

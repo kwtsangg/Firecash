@@ -84,6 +84,24 @@ async fn main() {
             "/api/assets/:id",
             put(routes::assets::update_asset).delete(routes::assets::delete_asset),
         )
+        .route(
+            "/api/budgets",
+            get(routes::budgets::list_budgets).post(routes::budgets::create_budget),
+        )
+        .route(
+            "/api/budgets/:id",
+            put(routes::budgets::update_budget).delete(routes::budgets::delete_budget),
+        )
+        .route(
+            "/api/budgets/:id/alert-rules",
+            get(routes::budgets::list_budget_alert_rules)
+                .post(routes::budgets::create_budget_alert_rule),
+        )
+        .route(
+            "/api/budget-alert-rules/:id",
+            put(routes::budgets::update_budget_alert_rule)
+                .delete(routes::budgets::delete_budget_alert_rule),
+        )
         .route("/api/totals", get(routes::metrics::totals))
         .route("/api/history", get(routes::metrics::history))
         .route("/api/fx-rates", get(routes::metrics::fx_rates))

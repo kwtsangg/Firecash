@@ -116,3 +116,18 @@ export function post<T>(path: string, body?: unknown, options?: RequestInit, con
     config,
   );
 }
+
+export function put<T>(path: string, body?: unknown, options?: RequestInit) {
+  return apiRequest<T>(path, {
+    ...options,
+    method: "PUT",
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
+export function del<T>(path: string, options?: RequestInit) {
+  return apiRequest<T>(path, {
+    ...options,
+    method: "DELETE",
+  });
+}

@@ -40,6 +40,12 @@ const RANGE_PRESETS = [
   { label: "Max", days: null },
 ];
 
+const OVERVIEW_SYMBOLS = [
+  { label: "S&P 500 (SPY)", symbol: "SPY" },
+  { label: "Nasdaq 100 (QQQ)", symbol: "QQQ" },
+  { label: "Dow 30 (DIA)", symbol: "DIA" },
+];
+
 function currencyFromSymbol(symbol: string) {
   const normalized = symbol.toUpperCase();
   if (normalized.endsWith(".HK")) {
@@ -70,6 +76,9 @@ export default function StockMarketPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [query, setQuery] = useState("");
   const [rangeDays, setRangeDays] = useState<number | null>(90);
+  const [overview, setOverview] = useState<
+    { label: string; symbol: string; price: number | null; change: number | null }[]
+  >([]);
   const displayCurrency = selectedSymbol ? currencyFromSymbol(selectedSymbol) : "USD";
 
   useEffect(() => {
@@ -89,6 +98,38 @@ export default function StockMarketPage() {
       }
     };
     loadSymbols();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadOverview = async () => {
+      try {
+        const results = await Promise.all(
+          OVERVIEW_SYMBOLS.map(async (item) => {
+            const response = await get<{ candles: Candle[] }>(
+              `/api/assets/candles?symbol=${encodeURIComponent(item.symbol)}`,
+            );
+            const latest = response.candles.at(-1);
+            const previous = response.candles.at(-2);
+            const price = latest?.close ?? null;
+            const change =
+              latest && previous ? ((latest.close - previous.close) / previous.close) * 100 : null;
+            return { ...item, price, change };
+          }),
+        );
+        if (isMounted) {
+          setOverview(results);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setOverview(OVERVIEW_SYMBOLS.map((item) => ({ ...item, price: null, change: null })));
+        }
+      }
+    };
+    loadOverview();
     return () => {
       isMounted = false;
     };
@@ -135,6 +176,37 @@ export default function StockMarketPage() {
           <p className="muted">Price source: Stooq.</p>
         </div>
       </header>
+      <div className="card">
+        <div className="chart-header">
+          <div>
+            <h3>Market overview</h3>
+            <p className="muted">Quick reads for major indices.</p>
+          </div>
+          <a
+            className="pill"
+            href="https://finviz.com/map.ashx"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open Finviz heatmap
+          </a>
+        </div>
+        <div className="symbol-grid">
+          {overview.map((item) => (
+            <div key={item.symbol} className="symbol-card">
+              <span>{item.label}</span>
+              <span className="muted">
+                {item.price === null
+                  ? "No data"
+                  : formatCurrency(item.price, currencyFromSymbol(item.symbol))}
+              </span>
+              <span className={item.change && item.change < 0 ? "status warn" : "status"}>
+                {item.change === null ? "—" : `${item.change > 0 ? "+" : ""}${item.change.toFixed(2)}%`}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
       <div className="card">
         <div className="chart-header">
           <div>

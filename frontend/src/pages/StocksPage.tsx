@@ -60,6 +60,10 @@ type Trade = {
   side: "Buy" | "Sell";
 };
 
+function getTodayDate() {
+  return new Date().toISOString().split("T")[0];
+}
+
 export default function StocksPage() {
   const { currency: displayCurrency } = useCurrency();
   const { account: selectedAccount, group: selectedGroup } = useSelection();
@@ -72,7 +76,7 @@ export default function StocksPage() {
   const [holdingTicker, setHoldingTicker] = useState("");
   const [holdingShares, setHoldingShares] = useState("");
   const [holdingPrice, setHoldingPrice] = useState("");
-  const [holdingDate, setHoldingDate] = useState("2026-04-20");
+  const [holdingDate, setHoldingDate] = useState(getTodayDate);
   const [holdingAccount, setHoldingAccount] = useState("");
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
@@ -141,6 +145,10 @@ export default function StocksPage() {
     () => accounts.map((account) => account.name),
     [accounts],
   );
+  const accountIdByName = useMemo(
+    () => new Map(accounts.map((account) => [account.name, account.id])),
+    [accounts],
+  );
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
@@ -175,13 +183,32 @@ export default function StocksPage() {
       const updatedCount = refreshResponse?.updated ?? 0;
       const availablePrices = pricesResponse.filter((price) => price.price !== null)
         .length;
+      const priceMap = new Map(pricesResponse.map((price) => [price.asset_id, price]));
+      const missingSymbols = holdings
+        .filter((holding) => {
+          const priceInfo = priceMap.get(holding.id);
+          const resolvedPrice = priceInfo?.price ?? holding.price;
+          return resolvedPrice === null;
+        })
+        .map((holding) => holding.ticker);
       if (updatedCount > 0) {
         showToast(
           "Quotes updated",
-          `${updatedCount} price${updatedCount === 1 ? "" : "s"} refreshed.`,
+          `${
+            updatedCount
+          } price${updatedCount === 1 ? "" : "s"} refreshed${
+            missingSymbols.length > 0
+              ? `. Missing: ${missingSymbols.join(", ")}.`
+              : "."
+          }`,
         );
       } else if (availablePrices > 0) {
         showToast("Quotes up to date", "No new prices were returned.");
+      } else if (missingSymbols.length > 0) {
+        showToast(
+          "Prices unavailable",
+          `No prices found for ${missingSymbols.join(", ")}. Check tickers.`,
+        );
       } else {
         showToast("No prices available", "Latest price data could not be fetched.");
       }
@@ -379,6 +406,7 @@ export default function StocksPage() {
         <div>
           <h1>Stocks</h1>
           <p className="muted">Track holdings, dividends, and live price momentum.</p>
+          <p className="muted">Price source: Yahoo Finance (fallback: Stooq).</p>
         </div>
         <div className="toolbar">
           <DateRangePicker value={range} onChange={setRange} />
@@ -409,7 +437,7 @@ export default function StocksPage() {
             <button
               className="pill primary"
               type="button"
-              onClick={() => {
+              onClick={async () => {
                 const normalizedTicker = holdingTicker.trim().toUpperCase();
                 if (!normalizedTicker) {
                   showToast("Ticker required", "Enter a ticker symbol to continue.");
@@ -421,21 +449,64 @@ export default function StocksPage() {
                   return;
                 }
                 const price = holdingPrice ? Number(holdingPrice) : null;
-                setHoldings((prev) => [
-                  {
-                    id: `${normalizedTicker}-${Date.now()}`,
-                    ticker: normalizedTicker,
-                    shares,
-                    avgEntry: price,
-                    price,
-                    change: 0,
-                    currency: normalizedTicker.endsWith(".HK") ? "HKD" : "USD",
-                    assetType: "Stock",
-                    account: holdingAccount,
-                    entryDate: holdingDate,
-                  },
-                  ...prev,
-                ]);
+                const accountId = accountIdByName.get(holdingAccount);
+                if (!accountId) {
+                  showToast("Account required", "Select an account to continue.");
+                  return;
+                }
+                const currencyCode = normalizedTicker.endsWith(".HK") ? "HKD" : "USD";
+                try {
+                  const createdAsset = await post<Asset>("/api/assets", {
+                    account_id: accountId,
+                    symbol: normalizedTicker,
+                    asset_type: "Stock",
+                    quantity: shares,
+                    currency_code: currencyCode,
+                  });
+                  setHoldings((prev) => [
+                    {
+                      id: createdAsset.id,
+                      ticker: createdAsset.symbol,
+                      shares: createdAsset.quantity,
+                      avgEntry: price,
+                      price,
+                      change: 0,
+                      currency: createdAsset.currency_code,
+                      assetType: createdAsset.asset_type,
+                      account: holdingAccount,
+                      entryDate: holdingDate,
+                    },
+                    ...prev,
+                  ]);
+                  const refreshResponse = await post<{ updated: number }>(
+                    "/api/assets/refresh-prices",
+                    {},
+                  );
+                  const pricesResponse = await get<AssetPrice[]>("/api/assets/prices");
+                  applyPriceUpdates(pricesResponse);
+                  const priceInfo = pricesResponse.find(
+                    (item) => item.asset_id === createdAsset.id,
+                  );
+                  if (!priceInfo?.price) {
+                    showToast(
+                      "Price unavailable",
+                      `No price found for ${normalizedTicker}. Check the ticker.`,
+                    );
+                  } else if (refreshResponse.updated > 0) {
+                    showToast(
+                      "Holding saved",
+                      `Added ${normalizedTicker} to ${holdingAccount}.`,
+                    );
+                  } else {
+                    showToast(
+                      "Holding saved",
+                      `Added ${normalizedTicker} to ${holdingAccount}.`,
+                    );
+                  }
+                } catch (err) {
+                  showToast("Save failed", "Unable to save holding.");
+                  return;
+                }
                 setTrades((prev) => [
                   {
                     id: `trade-${normalizedTicker}-${Date.now()}`,
@@ -453,8 +524,7 @@ export default function StocksPage() {
                 setHoldingTicker("");
                 setHoldingShares("");
                 setHoldingPrice("");
-                setHoldingDate("2026-04-20");
-                showToast("Holding saved", `Added ${normalizedTicker} to ${holdingAccount}.`);
+                setHoldingDate(getTodayDate());
               }}
             >
               Save Holding
@@ -469,7 +539,9 @@ export default function StocksPage() {
               type="text"
               placeholder="AAPL"
               value={holdingTicker}
-              onChange={(event) => setHoldingTicker(event.target.value)}
+              onChange={(event) =>
+                setHoldingTicker(event.target.value.toUpperCase())
+              }
             />
           </label>
           <label>
@@ -583,7 +655,10 @@ export default function StocksPage() {
             <p className="muted">No allocations yet.</p>
           ) : (
             <>
-              <DonutChart values={sectorMix} />
+              <DonutChart
+                values={sectorMix}
+                formatValue={(value) => formatCurrency(value, displayCurrency)}
+              />
               <div className="legend">
                 {sectorMix.map((item) => (
                   <div key={item.label} className="legend-item">

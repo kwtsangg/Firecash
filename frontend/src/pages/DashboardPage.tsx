@@ -696,7 +696,14 @@ export default function DashboardPage() {
         <div className="card">
           <h3>Allocation</h3>
           <p className="muted">Account group distribution.</p>
-          {donutValues.length ? <DonutChart values={donutValues} /> : <p className="muted">No assets yet.</p>}
+          {donutValues.length ? (
+            <DonutChart
+              values={donutValues}
+              formatValue={(value) => formatCurrency(value, displayCurrency)}
+            />
+          ) : (
+            <p className="muted">No assets yet.</p>
+          )}
           <div className="legend">
             {donutValues.map((item) => (
               <div key={item.label} className="legend-item">

@@ -33,13 +33,14 @@ export default function DateRangePicker({
   onPreset,
 }: DateRangePickerProps) {
   const presetValues = useMemo(() => {
-    const today = new Date();
+    const anchor = new Date(value.to);
+    const today = Number.isNaN(anchor.getTime()) ? new Date() : anchor;
     return presets.map((preset) => ({
       label: preset.label,
       from: formatDate(new Date(today.getTime() - preset.days * 86400000)),
       to: formatDate(today),
     }));
-  }, []);
+  }, [value.to]);
 
   return (
     <div className="date-range">

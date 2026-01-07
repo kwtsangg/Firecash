@@ -71,20 +71,6 @@ a {
   gap: 16px;
 }
 
-.sidebar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #9aa3ba;
-}
-
-.sidebar-title {
-  font-weight: 600;
-}
-
 .nav-link {
   display: flex;
   padding: 12px 16px;

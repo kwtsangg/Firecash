@@ -1,7 +1,7 @@
 type LineChartProps = {
   points: number[];
-  xLabels?: string[];
-  yLabels?: string[];
+  xLabels?: { label: string; position: number }[];
+  yLabels?: { label: string; position: number }[];
 };
 
 export function LineChart({ points, xLabels = [], yLabels = [] }: LineChartProps) {
@@ -22,36 +22,28 @@ export function LineChart({ points, xLabels = [], yLabels = [] }: LineChartProps
   return (
     <svg viewBox="0 0 100 100" className="chart-svg" preserveAspectRatio="none">
       <path d={path} fill="none" stroke="url(#lineGradient)" strokeWidth="3" />
-      {yLabels.map((label, index) => {
-        const yPosition =
-          yLabels.length === 1 ? 8 : (index / (yLabels.length - 1)) * 90 + 6;
-        return (
-          <text
-            key={`y-${label}-${index}`}
-            x="2"
-            y={100 - yPosition}
-            className="chart-axis-text"
-            textAnchor="start"
-          >
-            {label}
-          </text>
-        );
-      })}
-      {xLabels.map((label, index) => {
-        const xPosition =
-          xLabels.length === 1 ? 50 : (index / (xLabels.length - 1)) * 94 + 3;
-        return (
-          <text
-            key={`x-${label}-${index}`}
-            x={xPosition}
-            y="98"
-            className="chart-axis-text"
-            textAnchor="middle"
-          >
-            {label}
-          </text>
-        );
-      })}
+      {yLabels.map((item, index) => (
+        <text
+          key={`y-${item.label}-${index}`}
+          x="2"
+          y={item.position}
+          className="chart-axis-text"
+          textAnchor="start"
+        >
+          {item.label}
+        </text>
+      ))}
+      {xLabels.map((item, index) => (
+        <text
+          key={`x-${item.label}-${index}`}
+          x={item.position}
+          y="98"
+          className="chart-axis-text"
+          textAnchor="middle"
+        >
+          {item.label}
+        </text>
+      ))}
       <defs>
         <linearGradient id="lineGradient" x1="0" x2="1" y1="0" y2="0">
           <stop offset="0%" stopColor="#7f5bff" />

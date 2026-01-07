@@ -20,6 +20,17 @@ type Holding = {
   entryDate: string;
 };
 
+type Trade = {
+  id: string;
+  ticker: string;
+  shares: number;
+  price: number;
+  currency: string;
+  account: string;
+  date: string;
+  side: "Buy" | "Sell";
+};
+
 export default function StocksPage() {
   const accountOptions = ["Primary Account", "Retirement", "HKD Growth"];
   const supportedTickers = new Set(["AAPL", "TSLA", "0700.HK", "MSFT", "NVDA"]);
@@ -71,6 +82,38 @@ export default function StocksPage() {
       entryDate: "2026-03-03",
     },
   ]);
+  const [trades, setTrades] = useState<Trade[]>([
+    {
+      id: "trade-aapl-2026-01-15",
+      ticker: "AAPL",
+      shares: 42,
+      price: 168.2,
+      currency: "USD",
+      account: "Primary Account",
+      date: "2026-01-15",
+      side: "Buy",
+    },
+    {
+      id: "trade-tsla-2026-02-11",
+      ticker: "TSLA",
+      shares: 16,
+      price: 192.4,
+      currency: "USD",
+      account: "Retirement",
+      date: "2026-02-11",
+      side: "Buy",
+    },
+    {
+      id: "trade-0700-2026-03-03",
+      ticker: "0700.HK",
+      shares: 55,
+      price: 282.1,
+      currency: "HKD",
+      account: "HKD Growth",
+      date: "2026-03-03",
+      side: "Buy",
+    },
+  ]);
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
@@ -93,7 +136,7 @@ export default function StocksPage() {
     ],
     [],
   );
-  const performance = useMemo(() => {
+  const performanceSeriesFiltered = useMemo(() => {
     const fromDate = new Date(range.from);
     const toDate = new Date(range.to);
     const filtered = performanceSeries
@@ -101,9 +144,30 @@ export default function StocksPage() {
         const date = new Date(point.date);
         return date >= fromDate && date <= toDate;
       });
-    const series = filtered.length > 0 ? filtered : performanceSeries;
-    return series.map((point) => point.value);
+    return filtered.length > 0 ? filtered : performanceSeries;
   }, [performanceSeries, range.from, range.to]);
+  const performancePoints = performanceSeriesFiltered.map((point) => point.value);
+  const performanceMax = Math.max(...performancePoints);
+  const performanceMin = Math.min(...performancePoints);
+  const performanceMidpoint = Math.round((performanceMax + performanceMin) / 2);
+  const performanceYLabels = [
+    { label: formatCurrency(performanceMax, displayCurrency), position: 12 },
+    { label: formatCurrency(performanceMidpoint, displayCurrency), position: 52 },
+    { label: formatCurrency(performanceMin, displayCurrency), position: 92 },
+  ];
+  const performanceLabelIndexes = [
+    0,
+    Math.floor((performanceSeriesFiltered.length - 1) / 2),
+    Math.max(performanceSeriesFiltered.length - 1, 0),
+  ];
+  const performanceXLabels = Array.from(new Set(performanceLabelIndexes))
+    .filter((index) => performanceSeriesFiltered[index])
+    .map((index) => ({
+      label: new Date(performanceSeriesFiltered[index].date).toLocaleString("en-US", {
+        month: "short",
+      }),
+      position: (index / Math.max(performanceSeriesFiltered.length - 1, 1)) * 94 + 3,
+    }));
   const dividendBars = useMemo(
     () => [
       { label: "Jan", value: 240 },
@@ -133,6 +197,7 @@ export default function StocksPage() {
   const filteredHoldings = holdings.filter((holding) =>
     matchesSelection(holding.account),
   );
+  const filteredTrades = trades.filter((trade) => matchesSelection(trade.account));
   const totalEquity = filteredHoldings.reduce(
     (sum, holding) =>
       sum + convertAmount(holding.price * holding.shares, holding.currency, displayCurrency),
@@ -221,6 +286,19 @@ export default function StocksPage() {
                     currency: normalizedTicker.endsWith(".HK") ? "HKD" : "USD",
                     account: holdingAccount,
                     entryDate: holdingDate,
+                  },
+                  ...prev,
+                ]);
+                setTrades((prev) => [
+                  {
+                    id: `trade-${normalizedTicker}-${Date.now()}`,
+                    ticker: normalizedTicker,
+                    shares,
+                    price,
+                    currency: normalizedTicker.endsWith(".HK") ? "HKD" : "USD",
+                    account: holdingAccount,
+                    date: holdingDate,
+                    side: "Buy",
                   },
                   ...prev,
                 ]);
@@ -323,7 +401,11 @@ export default function StocksPage() {
           </button>
         </div>
         <div className="chart-surface">
-          <LineChart points={performance} />
+          <LineChart
+            points={performancePoints}
+            xLabels={performanceXLabels}
+            yLabels={performanceYLabels}
+          />
         </div>
       </div>
       <div className="split-grid">
@@ -390,6 +472,36 @@ export default function StocksPage() {
           <span>-</span>
           <span>-</span>
         </div>
+      </div>
+      <div className="card list-card">
+        <div className="card-header">
+          <div>
+            <h3>Recent trades</h3>
+            <p className="muted">Individual fills for your stock activity.</p>
+          </div>
+        </div>
+        <div className="list-row list-header columns-6">
+          <span>Date</span>
+          <span>Side</span>
+          <span>Ticker</span>
+          <span>Shares</span>
+          <span>Price</span>
+          <span>Account</span>
+        </div>
+        {filteredTrades.map((trade) => (
+          <div className="list-row columns-6" key={trade.id}>
+            <span>{trade.date}</span>
+            <span className={trade.side === "Sell" ? "status warn" : "status"}>
+              {trade.side}
+            </span>
+            <span>{trade.ticker}</span>
+            <span>{trade.shares}</span>
+            <span>
+              {formatCurrency(trade.price, trade.currency)} {trade.currency}
+            </span>
+            <span>{trade.account}</span>
+          </div>
+        ))}
       </div>
       <div className="card">
         <h3>Action center</h3>

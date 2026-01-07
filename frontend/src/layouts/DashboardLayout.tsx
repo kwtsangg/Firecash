@@ -30,16 +30,14 @@ export default function DashboardLayout() {
         <div className={`app-shell ${isSidebarOpen ? "" : "sidebar-collapsed"}`}>
           <header className="top-nav">
             <div className="logo-area">
-              {!isSidebarOpen && (
-                <button
-                  type="button"
-                  className="icon-button"
-                  onClick={() => setIsSidebarOpen(true)}
-                  aria-label="Open navigation"
-                >
-                  ☰
-                </button>
-              )}
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => setIsSidebarOpen((prev) => !prev)}
+                aria-label={isSidebarOpen ? "Hide navigation" : "Show navigation"}
+              >
+                {isSidebarOpen ? "×" : "☰"}
+              </button>
               <div className="logo">Firecash</div>
             </div>
             <div className="nav-actions">
@@ -65,17 +63,6 @@ export default function DashboardLayout() {
           </header>
           {isSidebarOpen && (
             <aside className="sidebar">
-              <div className="sidebar-header">
-                <span className="sidebar-title">Navigation</span>
-                <button
-                  type="button"
-                  className="icon-button"
-                  onClick={() => setIsSidebarOpen(false)}
-                  aria-label="Close navigation"
-                >
-                  ×
-                </button>
-              </div>
               <nav>
                 {navigation.map((item) => (
                   <NavLink

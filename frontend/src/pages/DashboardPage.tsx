@@ -147,16 +147,25 @@ export default function DashboardPage() {
     return sum + convertAmount(signedAmount, transaction.currency, displayCurrency);
   }, 0);
   const linePoints = lineSeries.map((point) => point.value);
-  const axisXLabels = lineSeries.map((point) =>
-    new Date(point.date).toLocaleString("en-US", { month: "short" }),
-  );
   const maxValue = Math.max(...linePoints);
   const minValue = Math.min(...linePoints);
+  const midpointValue = Math.round((maxValue + minValue) / 2);
   const axisYLabels = [
-    formatCurrency(maxValue, displayCurrency),
-    formatCurrency(Math.round((maxValue + minValue) / 2), displayCurrency),
-    formatCurrency(minValue, displayCurrency),
+    { label: formatCurrency(maxValue, displayCurrency), position: 12 },
+    { label: formatCurrency(midpointValue, displayCurrency), position: 52 },
+    { label: formatCurrency(minValue, displayCurrency), position: 92 },
   ];
+  const labelIndexes = [
+    0,
+    Math.floor((lineSeries.length - 1) / 2),
+    Math.max(lineSeries.length - 1, 0),
+  ];
+  const axisXLabels = Array.from(new Set(labelIndexes))
+    .filter((index) => lineSeries[index])
+    .map((index) => ({
+      label: new Date(lineSeries[index].date).toLocaleString("en-US", { month: "short" }),
+      position: (index / Math.max(lineSeries.length - 1, 1)) * 94 + 3,
+    }));
 
   return (
     <section className="page">

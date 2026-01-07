@@ -52,7 +52,7 @@ impl FromRequestParts<AppState> for AuthenticatedUser {
 
     async fn from_request_parts(
         parts: &mut Parts,
-        State(state): State<AppState>,
+        state: &AppState,
     ) -> Result<Self, Self::Rejection> {
         let auth_header = parts
             .headers
@@ -167,7 +167,7 @@ pub fn internal_error<E: std::fmt::Display>(error: E) -> (StatusCode, String) {
 }
 
 pub async fn ensure_database(pool: &PgPool) -> Result<(), sqlx::Error> {
-    sqlx::query!("SELECT 1")
+    sqlx::query("SELECT 1")
         .execute(pool)
         .await
         .map(|_| ())

@@ -4,6 +4,8 @@ import { BarChart, DonutChart, LineChart } from "../components/Charts";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import KpiCard from "../components/KpiCard";
 import Modal from "../components/Modal";
+import { useCurrency } from "../components/CurrencyContext";
+import { convertAmount, formatCurrency } from "../utils/currency";
 
 type Holding = {
   ticker: string;
@@ -19,6 +21,7 @@ type Holding = {
 export default function StocksPage() {
   const accountOptions = ["Primary Account", "Retirement", "HKD Growth"];
   const supportedTickers = new Set(["AAPL", "TSLA", "0700.HK", "MSFT", "NVDA"]);
+  const { currency: displayCurrency } = useCurrency();
   const [toast, setToast] = useState<ActionToastData | null>(null);
   const [range, setRange] = useState<DateRange>({
     from: "2024-01-01",
@@ -113,6 +116,16 @@ export default function StocksPage() {
     ],
     [],
   );
+  const totalEquity = holdings.reduce(
+    (sum, holding) =>
+      sum + convertAmount(holding.price * holding.shares, holding.currency, displayCurrency),
+    0,
+  );
+  const dayChange = holdings.reduce((sum, holding) => {
+    const holdingValue = holding.price * holding.shares;
+    const changeValue = (holding.change / 100) * holdingValue;
+    return sum + convertAmount(changeValue, holding.currency, displayCurrency);
+  }, 0);
 
   return (
     <section className="page">
@@ -256,7 +269,7 @@ export default function StocksPage() {
       <div className="card-grid">
         <KpiCard
           label="Total Equity"
-          value="$82,440"
+          value={formatCurrency(totalEquity, displayCurrency)}
           trend="+3.8%"
           footnote="vs last period"
         />
@@ -268,8 +281,8 @@ export default function StocksPage() {
         />
         <KpiCard
           label="Day Change"
-          value="+$1,420"
-          trend="+1.1%"
+          value={formatCurrency(dayChange, displayCurrency)}
+          trend={dayChange >= 0 ? "+1.1%" : "-0.6%"}
           footnote="market open"
         />
       </div>

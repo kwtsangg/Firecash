@@ -89,12 +89,12 @@ export default function DashboardLayout() {
                   </NavLink>
                 ))}
               </nav>
-              <div className="sidebar-footer">v{version}</div>
             </aside>
           )}
           <main className="content">
             <Outlet />
           </main>
+          <div className="version-badge">v{version}</div>
         </div>
       </SelectionProvider>
     </CurrencyProvider>

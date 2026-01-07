@@ -11,6 +11,7 @@ RUN useradd -m appuser
 WORKDIR /app
 COPY --from=builder /app/target/release/firecash-api /app/firecash-api
 COPY --from=builder /app/target/release/worker /app/firecash-api-worker
+COPY --from=builder /app/migrations /app/migrations
 USER appuser
 EXPOSE 8080
 CMD ["/app/firecash-api"]

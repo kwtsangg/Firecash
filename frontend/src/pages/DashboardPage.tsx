@@ -58,6 +58,13 @@ type AssetPriceStatus = {
   total_count: number;
 };
 
+type FxRate = {
+  base_currency: string;
+  quote_currency: string;
+  rate: number;
+  recorded_on: string;
+};
+
 type AssetDisplay = {
   name: string;
   amount: number;
@@ -102,6 +109,7 @@ export default function DashboardPage() {
   const [history, setHistory] = useState<HistoryPoint[]>([]);
   const [totals, setTotals] = useState<TotalsResponse | null>(null);
   const [priceStatus, setPriceStatus] = useState<AssetPriceStatus | null>(null);
+  const [fxRates, setFxRates] = useState<FxRate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -120,6 +128,7 @@ export default function DashboardPage() {
           historyResponse,
           totalsResponse,
           priceStatusResponse,
+          fxRatesResponse,
         ] = await Promise.all([
           get<Account[]>("/api/accounts"),
           get<Asset[]>("/api/assets"),
@@ -127,6 +136,7 @@ export default function DashboardPage() {
           get<HistoryPoint[]>("/api/history"),
           get<TotalsResponse>("/api/totals"),
           get<AssetPriceStatus>("/api/assets/price-status"),
+          get<FxRate[]>("/api/fx-rates"),
         ]);
         if (!isMounted) {
           return;
@@ -148,6 +158,7 @@ export default function DashboardPage() {
         setHistory(historyResponse);
         setTotals(totalsResponse);
         setPriceStatus(priceStatusResponse);
+        setFxRates(fxRatesResponse);
         setTransactionAccount(accountsResponse[0]?.id ?? "");
       } catch (err) {
         if (isMounted) {
@@ -279,6 +290,19 @@ export default function DashboardPage() {
     }));
   }, [filteredAssets]);
 
+  const latestFxRates = useMemo(() => {
+    const latestByCurrency = new Map<string, FxRate>();
+    fxRates.forEach((rate) => {
+      const existing = latestByCurrency.get(rate.quote_currency);
+      if (!existing || rate.recorded_on > existing.recorded_on) {
+        latestByCurrency.set(rate.quote_currency, rate);
+      }
+    });
+    return Array.from(latestByCurrency.values())
+      .filter((rate) => rate.base_currency === "USD")
+      .sort((a, b) => a.quote_currency.localeCompare(b.quote_currency));
+  }, [fxRates]);
+
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
   };
@@ -286,12 +310,14 @@ export default function DashboardPage() {
   const handleRefreshPrices = async () => {
     try {
       await post<{ updated: number }>("/api/assets/refresh-prices", {});
-      const [totalsResponse, priceStatusResponse] = await Promise.all([
+      const [totalsResponse, priceStatusResponse, fxRatesResponse] = await Promise.all([
         get<TotalsResponse>("/api/totals"),
         get<AssetPriceStatus>("/api/assets/price-status"),
+        get<FxRate[]>("/api/fx-rates"),
       ]);
       setTotals(totalsResponse);
       setPriceStatus(priceStatusResponse);
+      setFxRates(fxRatesResponse);
       showToast("Price refresh complete", "Latest prices are now available.");
     } catch (err) {
       showToast("Price refresh failed", "Unable to sync the latest prices.");
@@ -679,6 +705,21 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
+        </div>
+        <div className="card">
+          <h3>FX rates</h3>
+          <p className="muted">Latest USD base currency rates.</p>
+          {latestFxRates.length === 0 ? (
+            <p className="muted">No FX rates available.</p>
+          ) : (
+            <div className="chip-grid">
+              {latestFxRates.map((rate) => (
+                <span key={rate.quote_currency} className="chip">
+                  {rate.quote_currency} {rate.rate.toFixed(3)}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
       <div className="card list-card">

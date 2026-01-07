@@ -151,9 +151,9 @@ export default function DashboardPage() {
   const minValue = Math.min(...linePoints);
   const midpointValue = Math.round((maxValue + minValue) / 2);
   const axisYLabels = [
-    { label: formatCurrency(maxValue, displayCurrency), position: 12 },
-    { label: formatCurrency(midpointValue, displayCurrency), position: 52 },
-    { label: formatCurrency(minValue, displayCurrency), position: 92 },
+    formatCurrency(maxValue, displayCurrency),
+    formatCurrency(midpointValue, displayCurrency),
+    formatCurrency(minValue, displayCurrency),
   ];
   const labelIndexes = [
     0,
@@ -162,10 +162,9 @@ export default function DashboardPage() {
   ];
   const axisXLabels = Array.from(new Set(labelIndexes))
     .filter((index) => lineSeries[index])
-    .map((index) => ({
-      label: new Date(lineSeries[index].date).toLocaleString("en-US", { month: "short" }),
-      position: (index / Math.max(lineSeries.length - 1, 1)) * 94 + 3,
-    }));
+    .map((index) =>
+      new Date(lineSeries[index].date).toLocaleString("en-US", { month: "short" }),
+    );
 
   return (
     <section className="page">
@@ -385,8 +384,20 @@ export default function DashboardPage() {
           </div>
           <DateRangePicker value={range} onChange={setRange} />
         </div>
-        <div className="chart-surface">
-          <LineChart points={linePoints} xLabels={axisXLabels} yLabels={axisYLabels} />
+        <div className="chart-surface chart-axis-shell">
+          <div className="chart-axis-y">
+            {axisYLabels.map((label) => (
+              <span key={label}>{label}</span>
+            ))}
+          </div>
+          <div className="chart-axis-plot">
+            <LineChart points={linePoints} />
+            <div className="chart-axis-x">
+              {axisXLabels.map((label, index) => (
+                <span key={`${label}-${index}`}>{label}</span>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
       <div className="split-grid">

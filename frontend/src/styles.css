@@ -257,10 +257,32 @@ textarea:focus-visible,
   padding: 16px 16px 32px 56px;
 }
 
+.chart-axis-title {
+  position: absolute;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.chart-axis-title.y {
+  left: 6px;
+  top: 50%;
+  transform: rotate(-90deg) translate(-50%, -50%);
+  transform-origin: left top;
+}
+
+.chart-axis-title.x {
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
 .chart-axis-y {
   position: absolute;
   left: 16px;
-  top: 16px;
+  top: 24px;
   bottom: 40px;
   display: flex;
   flex-direction: column;
@@ -438,6 +460,7 @@ textarea:focus-visible,
   pointer-events: none;
   white-space: nowrap;
   box-shadow: 0 12px 30px rgba(6, 10, 24, 0.4);
+  z-index: 2;
 }
 
 .chart-tooltip-label {
@@ -447,7 +470,10 @@ textarea:focus-visible,
 
 .chart-axis-text {
   fill: var(--text-muted);
-  font-size: 4px;
+  font-size: 3.6px;
+  paint-order: stroke;
+  stroke: rgba(12, 14, 24, 0.8);
+  stroke-width: 1.1px;
 }
 
 .chart-grid-major {
@@ -537,6 +563,26 @@ textarea:focus-visible,
   width: 100%;
   border-radius: 10px 10px 4px 4px;
   background: linear-gradient(180deg, #5b6cff, #7f5bff);
+}
+
+.bar-tooltip {
+  position: absolute;
+  transform: translate(-50%, -120%);
+  background: rgba(18, 20, 34, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #f5f6ff;
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 12px 30px rgba(6, 10, 24, 0.4);
+  z-index: 2;
+}
+
+.bar-tooltip-label {
+  font-size: 11px;
+  color: #c6cbe0;
 }
 
 .donut-chart {

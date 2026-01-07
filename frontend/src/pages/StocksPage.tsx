@@ -1169,7 +1169,10 @@ export default function StocksPage() {
               labels={tooltipDates}
               formatLabel={formatDateDisplay}
               formatValue={(value) => formatCurrency(value, displayCurrency)}
+              showAxisLabels={false}
             />
+            <span className="chart-axis-title y">Value</span>
+            <span className="chart-axis-title x">Date</span>
             <div className="chart-axis-y">
               {performanceYLabels.map((label) => (
                 <span key={label}>{label}</span>
@@ -1190,7 +1193,10 @@ export default function StocksPage() {
           {dividendBars.length === 0 ? (
             <p className="muted">No income activity yet.</p>
           ) : (
-            <BarChart values={dividendBars} />
+            <BarChart
+              values={dividendBars}
+              formatValue={(value) => formatCurrency(value, displayCurrency)}
+            />
           )}
         </div>
         <div className="card">

@@ -155,8 +155,10 @@ export default function StocksPage() {
   const performancePoints = performanceSeries.map((point) =>
     Math.round(point.value * selectionScale),
   );
-  const performanceMax = Math.max(...performancePoints, 0);
-  const performanceMin = Math.min(...performancePoints, 0);
+  const performanceMax =
+    performancePoints.length > 0 ? Math.max(...performancePoints) : 0;
+  const performanceMin =
+    performancePoints.length > 0 ? Math.min(...performancePoints) : 0;
   const performanceMidpoint = Math.round((performanceMax + performanceMin) / 2);
   const performanceYLabels = [
     formatCurrency(performanceMax, displayCurrency),
@@ -183,7 +185,7 @@ export default function StocksPage() {
     .filter((index, position, list) => list.indexOf(index) === position)
     .filter((index) => performanceSeries[index])
     .map((index) => formatDateDisplay(performanceSeries[index].date));
-  const tooltipDates = performanceSeries.map((point) => formatDateDisplay(point.date));
+  const tooltipDates = performanceSeries.map((point) => point.date);
 
   const dividendBars = useMemo(() => {
     if (holdings.length === 0) {
@@ -210,12 +212,13 @@ export default function StocksPage() {
   }, [holdings.length]);
 
   const totalEquity = filteredHoldings.reduce((sum, holding) => {
-    if (!holding.price) {
+    const effectivePrice = holding.price ?? holding.avgEntry;
+    if (!effectivePrice) {
       return sum;
     }
     return (
       sum +
-      convertAmount(holding.price * holding.shares, holding.currency, displayCurrency)
+      convertAmount(effectivePrice * holding.shares, holding.currency, displayCurrency)
     );
   }, 0);
 
@@ -438,6 +441,7 @@ export default function StocksPage() {
           <LineChart
             points={performancePoints}
             labels={tooltipDates}
+            formatLabel={formatDateDisplay}
             formatValue={(value) => formatCurrency(value, displayCurrency)}
           />
           <div className="chart-axis-y">
@@ -530,7 +534,7 @@ export default function StocksPage() {
           <span>-</span>
           <span>-</span>
           <span>-</span>
-          <span>{formatCurrency(totalMarketValue, displayCurrency)}</span>
+          <span>{formatCurrency(totalEquity, displayCurrency)}</span>
           <span>-</span>
           <span>-</span>
         </div>

@@ -4,6 +4,7 @@ type LineChartProps = {
   points: number[];
   labels?: string[];
   formatValue?: (value: number) => string;
+  formatLabel?: (label: string) => string;
   xLabels?: { label: string; position: number }[];
   yLabels?: { label: string; position: number }[];
 };
@@ -12,13 +13,14 @@ export function LineChart({
   points,
   labels = [],
   formatValue,
+  formatLabel,
   xLabels = [],
   yLabels = [],
 }: LineChartProps) {
   if (points.length === 0) {
     return <div className="chart-empty">No data</div>;
   }
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [hoverRatio, setHoverRatio] = useState<number | null>(null);
   const max = Math.max(...points);
   const min = Math.min(...points);
   const range = max - min || 1;
@@ -35,24 +37,60 @@ export function LineChart({
   const path = positions
     .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
     .join(" ");
-  const activePoint = activeIndex === null ? null : positions[activeIndex];
+  const activePoint = useMemo(() => {
+    if (hoverRatio === null) {
+      return null;
+    }
+    const clampedRatio = Math.min(1, Math.max(0, hoverRatio));
+    const scaledIndex = clampedRatio * (points.length - 1);
+    const lowerIndex = Math.floor(scaledIndex);
+    const upperIndex = Math.min(lowerIndex + 1, points.length - 1);
+    const blend =
+      upperIndex === lowerIndex ? 0 : (scaledIndex - lowerIndex) / (upperIndex - lowerIndex);
+    const value =
+      points[lowerIndex] + (points[upperIndex] - points[lowerIndex]) * blend;
+    const x = clampedRatio * 100;
+    const y = 100 - ((value - min) / range) * 100;
+    return {
+      x,
+      y,
+      value,
+      lowerIndex,
+      upperIndex,
+      blend,
+    };
+  }, [hoverRatio, min, points, range]);
+
   const tooltipValue =
-    activePoint && formatValue ? formatValue(activePoint.value) : activePoint?.value.toString();
-  const tooltipLabel = activeIndex !== null ? labels[activeIndex] : null;
+    activePoint && formatValue
+      ? formatValue(activePoint.value)
+      : activePoint?.value.toString();
+  const tooltipLabel = useMemo(() => {
+    if (!activePoint || labels.length === 0) {
+      return null;
+    }
+    const lowerLabel = labels[activePoint.lowerIndex];
+    const upperLabel = labels[activePoint.upperIndex];
+    const lowerTime = Date.parse(lowerLabel);
+    const upperTime = Date.parse(upperLabel);
+    if (Number.isNaN(lowerTime) || Number.isNaN(upperTime)) {
+      const fallbackLabel = labels[Math.round(activePoint.lowerIndex + activePoint.blend)];
+      return formatLabel ? formatLabel(fallbackLabel) : fallbackLabel;
+    }
+    const interpolatedTime = lowerTime + (upperTime - lowerTime) * activePoint.blend;
+    const interpolatedLabel = new Date(interpolatedTime).toISOString().split("T")[0];
+    return formatLabel ? formatLabel(interpolatedLabel) : interpolatedLabel;
+  }, [activePoint, formatLabel, labels]);
 
   const handleMove = (event: MouseEvent<SVGSVGElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     const relativeX = event.clientX - rect.left;
     const ratio = rect.width ? relativeX / rect.width : 0;
-    const nextIndex = Math.min(
-      positions.length - 1,
-      Math.max(0, Math.round(ratio * (positions.length - 1))),
-    );
-    setActiveIndex(nextIndex);
+    setHoverRatio(ratio);
   };
 
   const handleLeave = () => {
-    setActiveIndex(null);
+    setHoverRatio(null);
   };
 
   return (

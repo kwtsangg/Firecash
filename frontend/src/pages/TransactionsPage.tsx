@@ -132,6 +132,10 @@ export default function TransactionsPage() {
     const rowDate = parseDateInput(row.date);
     return rowDate >= parseDateInput(range.from) && rowDate <= parseDateInput(range.to);
   });
+  const transactionTotal = filteredTransactions.reduce((sum, row) => {
+    const signedAmount = row.type === "Expense" ? -row.amount : row.amount;
+    return sum + convertAmount(signedAmount, row.currency, displayCurrency);
+  }, 0);
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
@@ -327,7 +331,7 @@ export default function TransactionsPage() {
             <div className="list-row columns-4" key={row.id}>
               <span>{row.description ?? "Recurring transaction"}</span>
               <span>{`Every ${row.interval_days} days`}</span>
-              <span>{row.next_occurs_at.split("T")[0]}</span>
+              <span>{formatDateDisplay(row.next_occurs_at)}</span>
               <span className="status">Active</span>
             </div>
           ))
@@ -344,25 +348,34 @@ export default function TransactionsPage() {
         {filteredTransactions.length === 0 ? (
           <div className="list-row columns-5 empty-state">No transactions available.</div>
         ) : (
-          filteredTransactions.map((row) => (
-            <div className="list-row columns-5" key={`${row.date}-${row.amount}-${row.account}`}>
-              <span>{formatDateDisplay(row.date)}</span>
-              <span>{row.account}</span>
-              <span>{row.type}</span>
-              <span className="amount-cell">
-                <span>
-                  {formatCurrency(
-                    convertAmount(row.amount, row.currency, displayCurrency),
-                    displayCurrency,
-                  )}
+          <>
+            {filteredTransactions.map((row) => (
+              <div className="list-row columns-5" key={`${row.date}-${row.amount}-${row.account}`}>
+                <span>{formatDateDisplay(row.date)}</span>
+                <span>{row.account}</span>
+                <span>{row.type}</span>
+                <span className="amount-cell">
+                  <span>
+                    {formatCurrency(
+                      convertAmount(row.amount, row.currency, displayCurrency),
+                      displayCurrency,
+                    )}
+                  </span>
+                  <span className="subtext">
+                    {formatCurrency(row.amount, row.currency)} {row.currency}
+                  </span>
                 </span>
-                <span className="subtext">
-                  {formatCurrency(row.amount, row.currency)} {row.currency}
-                </span>
-              </span>
-              <span className="status">{row.status}</span>
+                <span className="status">{row.status}</span>
+              </div>
+            ))}
+            <div className="list-row columns-5 summary-row">
+              <span>Total</span>
+              <span>-</span>
+              <span>-</span>
+              <span>{formatCurrency(transactionTotal, displayCurrency)}</span>
+              <span>-</span>
             </div>
-          ))
+          </>
         )}
       </div>
     </section>

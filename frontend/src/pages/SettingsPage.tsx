@@ -3,11 +3,20 @@ import ActionToast, { ActionToastData } from "../components/ActionToast";
 import { useAuth } from "../components/AuthContext";
 import { ApiError, get, put } from "../utils/apiClient";
 import { readCategories, storeCategories } from "../utils/categories";
+import { readStrategies, storeStrategies } from "../utils/strategies";
+import { formatDateDisplay } from "../utils/date";
 
 type UserProfile = {
   id: string;
   name: string;
   email: string;
+};
+
+type FxRate = {
+  base_currency: string;
+  quote_currency: string;
+  rate: number;
+  recorded_on: string;
 };
 
 export default function SettingsPage() {
@@ -20,6 +29,9 @@ export default function SettingsPage() {
   const [email, setEmail] = useState("");
   const [categories, setCategories] = useState<string[]>(() => readCategories());
   const [categoryName, setCategoryName] = useState("");
+  const [strategies, setStrategies] = useState<string[]>(() => readStrategies());
+  const [strategyName, setStrategyName] = useState("");
+  const [fxRates, setFxRates] = useState<FxRate[]>([]);
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
@@ -55,6 +67,30 @@ export default function SettingsPage() {
   useEffect(() => {
     storeCategories(categories);
   }, [categories]);
+
+  useEffect(() => {
+    storeStrategies(strategies);
+  }, [strategies]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadFxRates = async () => {
+      try {
+        const response = await get<FxRate[]>("/api/fx-rates");
+        if (isMounted) {
+          setFxRates(response);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setFxRates([]);
+        }
+      }
+    };
+    loadFxRates();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   return (
     <section className="page">
@@ -218,6 +254,83 @@ export default function SettingsPage() {
               </div>
             ))}
           </div>
+        </div>
+        <div className="card">
+          <h3>Stock strategies</h3>
+          <p className="muted">Manage strategy labels for holdings.</p>
+          <div className="category-manager">
+            <input
+              type="text"
+              placeholder="New strategy"
+              value={strategyName}
+              onChange={(event) => setStrategyName(event.target.value)}
+            />
+            <button
+              className="pill"
+              type="button"
+              onClick={() => {
+                const trimmed = strategyName.trim();
+                if (!trimmed) {
+                  showToast("Missing strategy", "Enter a strategy name to save.");
+                  return;
+                }
+                if (strategies.some((strategy) => strategy.toLowerCase() === trimmed.toLowerCase())) {
+                  showToast("Strategy exists", "Choose a new strategy name.");
+                  return;
+                }
+                setStrategies((prev) => [...prev, trimmed]);
+                setStrategyName("");
+                showToast("Strategy added", `${trimmed} is ready to use.`);
+              }}
+            >
+              Add Strategy
+            </button>
+          </div>
+          <div className="chip-grid">
+            {strategies.map((strategy) => (
+              <div className="chip" key={strategy}>
+                <span>{strategy}</span>
+                <button
+                  type="button"
+                  className="chip-action"
+                  onClick={() => {
+                    const updated = strategies.filter((item) => item !== strategy);
+                    setStrategies(updated.length ? updated : ["Long Term"]);
+                  }}
+                  aria-label={`Remove ${strategy}`}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="card">
+          <h3>FX rate table</h3>
+          <p className="muted">Latest currency conversions.</p>
+          {fxRates.length === 0 ? (
+            <p className="muted">No FX rates available.</p>
+          ) : (
+            <div className="table">
+              <div className="table-row table-header columns-4">
+                <span>Base</span>
+                <span>Quote</span>
+                <span>Rate</span>
+                <span>Date</span>
+              </div>
+              {fxRates.map((rate) => (
+                <div
+                  className="table-row columns-4"
+                  key={`${rate.base_currency}-${rate.quote_currency}-${rate.recorded_on}`}
+                >
+                  <span>{rate.base_currency}</span>
+                  <span>{rate.quote_currency}</span>
+                  <span>{rate.rate.toFixed(4)}</span>
+                  <span>{formatDateDisplay(rate.recorded_on)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </section>

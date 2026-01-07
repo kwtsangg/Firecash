@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
-import { BarChart, DonutChart, LineChart } from "../components/Charts";
+import { BarChart, CandlestickChart, DonutChart, LineChart } from "../components/Charts";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import KpiCard from "../components/KpiCard";
 import Modal from "../components/Modal";
 import { useCurrency } from "../components/CurrencyContext";
 import { useSelection } from "../components/SelectionContext";
-import { get, post } from "../utils/apiClient";
+import { del, get, post } from "../utils/apiClient";
 import { convertAmount, formatCurrency } from "../utils/currency";
-import { formatDateDisplay } from "../utils/date";
+import { formatDateDisplay, toDateInputValue } from "../utils/date";
+import {
+  readHoldingStrategies,
+  readStrategies,
+  storeHoldingStrategies,
+  storeStrategies,
+} from "../utils/strategies";
 
 type Account = {
   id: string;
@@ -60,8 +66,54 @@ type Trade = {
   side: "Buy" | "Sell";
 };
 
+type Candle = {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+};
+
+const POPULAR_SYMBOLS = [
+  "AAPL",
+  "MSFT",
+  "GOOGL",
+  "AMZN",
+  "TSLA",
+  "NVDA",
+  "META",
+  "NFLX",
+  "BRK.B",
+  "SPY",
+  "QQQ",
+  "0700.HK",
+];
+
 function getTodayDate() {
-  return new Date().toISOString().split("T")[0];
+  return toDateInputValue(new Date());
+}
+
+function currencyFromSymbol(symbol: string) {
+  const normalized = symbol.toUpperCase();
+  if (normalized.endsWith(".HK")) {
+    return "HKD";
+  }
+  if (normalized.endsWith(".JP")) {
+    return "JPY";
+  }
+  if (normalized.endsWith(".L")) {
+    return "GBP";
+  }
+  if (normalized.endsWith(".TO")) {
+    return "CAD";
+  }
+  if (normalized.endsWith(".SW")) {
+    return "CHF";
+  }
+  if (normalized.endsWith(".DE") || normalized.endsWith(".EU")) {
+    return "EUR";
+  }
+  return "USD";
 }
 
 export default function StocksPage() {
@@ -78,10 +130,19 @@ export default function StocksPage() {
   const [holdingPrice, setHoldingPrice] = useState("");
   const [holdingDate, setHoldingDate] = useState(getTodayDate);
   const [holdingAccount, setHoldingAccount] = useState("");
+  const [holdingStrategy, setHoldingStrategy] = useState("Long Term");
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
+  const [strategies, setStrategies] = useState<string[]>(() => readStrategies());
+  const [holdingStrategies, setHoldingStrategies] = useState<Record<string, string>>(
+    () => readHoldingStrategies(),
+  );
+  const [selectedHoldings, setSelectedHoldings] = useState<Set<string>>(new Set());
+  const [candleSymbol, setCandleSymbol] = useState<string | null>(null);
+  const [candles, setCandles] = useState<Candle[]>([]);
+  const [isCandleLoading, setIsCandleLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -141,6 +202,14 @@ export default function StocksPage() {
     };
   }, []);
 
+  useEffect(() => {
+    storeStrategies(strategies);
+  }, [strategies]);
+
+  useEffect(() => {
+    storeHoldingStrategies(holdingStrategies);
+  }, [holdingStrategies]);
+
   const accountOptions = useMemo(
     () => accounts.map((account) => account.name),
     [accounts],
@@ -149,6 +218,15 @@ export default function StocksPage() {
     () => new Map(accounts.map((account) => [account.name, account.id])),
     [accounts],
   );
+  const symbolSuggestions = useMemo(() => {
+    const holdingSymbols = holdings.map((holding) => holding.ticker);
+    const unique = Array.from(new Set([...POPULAR_SYMBOLS, ...holdingSymbols]));
+    if (!holdingTicker) {
+      return unique;
+    }
+    const query = holdingTicker.toUpperCase();
+    return unique.filter((symbol) => symbol.includes(query));
+  }, [holdingTicker, holdings]);
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
@@ -214,6 +292,53 @@ export default function StocksPage() {
       }
     } catch (err) {
       showToast("Quote sync failed", "Unable to refresh stock prices.");
+    }
+  };
+
+  const toggleHoldingSelection = (id: string) => {
+    setSelectedHoldings((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedHoldings.size === 0) {
+      showToast("No selections", "Choose holdings to delete.");
+      return;
+    }
+    const ids = Array.from(selectedHoldings);
+    try {
+      await Promise.all(ids.map((id) => del(`/api/assets/${id}`)));
+      setHoldings((prev) => prev.filter((holding) => !selectedHoldings.has(holding.id)));
+      setHoldingStrategies((prev) => {
+        const next = { ...prev };
+        ids.forEach((id) => delete next[id]);
+        return next;
+      });
+      setSelectedHoldings(new Set());
+      showToast("Holdings deleted", `${ids.length} holding(s) removed.`);
+    } catch (err) {
+      showToast("Delete failed", "Unable to delete selected holdings.");
+    }
+  };
+
+  const loadCandles = async (symbol: string) => {
+    setIsCandleLoading(true);
+    try {
+      const response = await get<{ symbol: string; candles: Candle[] }>(
+        `/api/assets/candles?symbol=${encodeURIComponent(symbol)}`,
+      );
+      setCandles(response.candles);
+    } catch (err) {
+      setCandles([]);
+    } finally {
+      setIsCandleLoading(false);
     }
   };
 
@@ -406,7 +531,7 @@ export default function StocksPage() {
         <div>
           <h1>Stocks</h1>
           <p className="muted">Track holdings, dividends, and live price momentum.</p>
-          <p className="muted">Price source: Yahoo Finance (fallback: Stooq).</p>
+          <p className="muted">Price source: Stooq.</p>
         </div>
         <div className="toolbar">
           <DateRangePicker value={range} onChange={setRange} />
@@ -454,7 +579,7 @@ export default function StocksPage() {
                   showToast("Account required", "Select an account to continue.");
                   return;
                 }
-                const currencyCode = normalizedTicker.endsWith(".HK") ? "HKD" : "USD";
+                const currencyCode = currencyFromSymbol(normalizedTicker);
                 try {
                   const createdAsset = await post<Asset>("/api/assets", {
                     account_id: accountId,
@@ -463,6 +588,10 @@ export default function StocksPage() {
                     quantity: shares,
                     currency_code: currencyCode,
                   });
+                  setHoldingStrategies((prev) => ({
+                    ...prev,
+                    [createdAsset.id]: holdingStrategy,
+                  }));
                   setHoldings((prev) => [
                     {
                       id: createdAsset.id,
@@ -513,7 +642,7 @@ export default function StocksPage() {
                     ticker: normalizedTicker,
                     shares,
                     price,
-                    currency: normalizedTicker.endsWith(".HK") ? "HKD" : "USD",
+                    currency: currencyFromSymbol(normalizedTicker),
                     account: holdingAccount,
                     date: holdingDate,
                     side: "Buy",
@@ -525,6 +654,7 @@ export default function StocksPage() {
                 setHoldingShares("");
                 setHoldingPrice("");
                 setHoldingDate(getTodayDate());
+                setHoldingStrategy("Long Term");
               }}
             >
               Save Holding
@@ -539,11 +669,17 @@ export default function StocksPage() {
               type="text"
               placeholder="AAPL"
               value={holdingTicker}
+              list="stock-symbols"
               onChange={(event) =>
                 setHoldingTicker(event.target.value.toUpperCase())
               }
             />
           </label>
+          <datalist id="stock-symbols">
+            {symbolSuggestions.map((symbol) => (
+              <option key={symbol} value={symbol} />
+            ))}
+          </datalist>
           <label>
             Shares
             <input
@@ -582,10 +718,56 @@ export default function StocksPage() {
               value={holdingDate}
               onChange={(event) => setHoldingDate(event.target.value)}
             />
+            <span className="input-helper">{formatDateDisplay(holdingDate)}</span>
+          </label>
+          <label>
+            Strategy
+            <select
+              value={holdingStrategy}
+              onChange={(event) => setHoldingStrategy(event.target.value)}
+            >
+              {strategies.map((strategy) => (
+                <option key={strategy} value={strategy}>
+                  {strategy}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
       </Modal>
       {toast && <ActionToast toast={toast} onDismiss={() => setToast(null)} />}
+      {candleSymbol ? (
+        <div className="card chart-card">
+          <div className="chart-header">
+            <div>
+              <h3>{candleSymbol} price action</h3>
+              <p className="muted">Daily candles from Stooq.</p>
+            </div>
+            <button
+              className="pill"
+              onClick={() => {
+                setCandleSymbol(null);
+                setCandles([]);
+              }}
+            >
+              Clear
+            </button>
+          </div>
+          <div className="chart-surface">
+            {isCandleLoading ? (
+              <p className="muted">Loading candles…</p>
+            ) : candles.length === 0 ? (
+              <p className="muted">No candle data available.</p>
+            ) : (
+              <CandlestickChart
+                candles={candles}
+                formatValue={(value) => formatCurrency(value, displayCurrency)}
+                formatLabel={formatDateDisplay}
+              />
+            )}
+          </div>
+        </div>
+      ) : null}
       <div className="card-grid">
         <KpiCard
           label="Total Equity"
@@ -672,20 +854,70 @@ export default function StocksPage() {
         </div>
       </div>
       <div className="card list-card">
-        <div className="list-row list-header columns-7">
+        <div className="list-actions">
+          <button className="pill" type="button" onClick={handleDeleteSelected}>
+            Delete selected
+          </button>
+        </div>
+        <div className="list-row list-header columns-8">
+          <span>
+            <input
+              type="checkbox"
+              checked={
+                filteredHoldings.length > 0 &&
+                filteredHoldings.every((holding) => selectedHoldings.has(holding.id))
+              }
+              onChange={(event) => {
+                if (event.target.checked) {
+                  setSelectedHoldings(
+                    new Set(filteredHoldings.map((holding) => holding.id)),
+                  );
+                } else {
+                  setSelectedHoldings(new Set());
+                }
+              }}
+            />
+          </span>
           <span>Ticker</span>
           <span>Shares</span>
           <span>Avg Entry</span>
           <span>Last Price</span>
           <span>Market Value ({displayCurrency})</span>
           <span>Day Change</span>
+          <span>Strategy</span>
           <span>Account</span>
         </div>
         {filteredHoldings.length === 0 ? (
-          <div className="list-row columns-7 empty-state">No holdings available.</div>
+          <div className="list-row columns-8 empty-state">No holdings available.</div>
         ) : (
           filteredHoldings.map((row) => (
-            <div className="list-row columns-7" key={row.id}>
+            <div
+              className="list-row columns-8"
+              key={row.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => {
+                setCandleSymbol(row.ticker);
+                loadCandles(row.ticker);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  setCandleSymbol(row.ticker);
+                  loadCandles(row.ticker);
+                }
+              }}
+            >
+              <span>
+                <input
+                  type="checkbox"
+                  checked={selectedHoldings.has(row.id)}
+                  onChange={(event) => {
+                    event.stopPropagation();
+                    toggleHoldingSelection(row.id);
+                  }}
+                  onClick={(event) => event.stopPropagation()}
+                />
+              </span>
               <span>{row.ticker}</span>
               <span>{row.shares}</span>
               <span>
@@ -710,16 +942,37 @@ export default function StocksPage() {
                 {row.change > 0 ? "+" : ""}
                 {row.change.toFixed(1)}%
               </span>
+              <span>
+                <select
+                  value={holdingStrategies[row.id] ?? "Unassigned"}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setHoldingStrategies((prev) => ({
+                      ...prev,
+                      [row.id]: value,
+                    }));
+                  }}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  {["Unassigned", ...strategies].map((strategy) => (
+                    <option key={strategy} value={strategy}>
+                      {strategy}
+                    </option>
+                  ))}
+                </select>
+              </span>
               <span>{row.account}</span>
             </div>
           ))
         )}
-        <div className="list-row columns-7 summary-row">
+        <div className="list-row columns-8 summary-row">
           <span>Total</span>
           <span>-</span>
           <span>-</span>
           <span>-</span>
+          <span>-</span>
           <span>{formatCurrency(totalEquity, displayCurrency)}</span>
+          <span>-</span>
           <span>-</span>
           <span>-</span>
         </div>

@@ -128,3 +128,14 @@ export function put<T>(path: string, body?: unknown, options?: RequestInit, conf
     config,
   );
 }
+
+export function del<T>(path: string, options?: RequestInit, config?: { skipAuth?: boolean }) {
+  return apiRequest<T>(
+    path,
+    {
+      ...options,
+      method: "DELETE",
+    },
+    config,
+  );
+}

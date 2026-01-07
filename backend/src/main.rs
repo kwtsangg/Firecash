@@ -3,7 +3,7 @@ mod models;
 mod routes;
 mod state;
 
-use axum::{routing::get, routing::post, Router};
+use axum::{routing::delete, routing::get, routing::post, routing::put, Router};
 use sqlx::postgres::PgPoolOptions;
 use std::net::SocketAddr;
 use tower_http::cors::{Any, CorsLayer};
@@ -46,9 +46,18 @@ async fn main() {
         .route("/api/login", post(auth::login))
         .route("/api/accounts", get(routes::accounts::list_accounts).post(routes::accounts::create_account))
         .route(
+            "/api/accounts/:id",
+            put(routes::accounts::update_account).delete(routes::accounts::delete_account),
+        )
+        .route(
             "/api/account-groups",
             get(routes::account_groups::list_account_groups)
                 .post(routes::account_groups::create_account_group),
+        )
+        .route(
+            "/api/account-groups/:id",
+            put(routes::account_groups::update_account_group)
+                .delete(routes::account_groups::delete_account_group),
         )
         .route(
             "/api/transactions",
@@ -56,11 +65,25 @@ async fn main() {
                 .post(routes::transactions::create_transaction),
         )
         .route(
+            "/api/transactions/:id",
+            put(routes::transactions::update_transaction)
+                .delete(routes::transactions::delete_transaction),
+        )
+        .route(
             "/api/recurring-transactions",
             get(routes::recurring_transactions::list_recurring_transactions)
                 .post(routes::recurring_transactions::create_recurring_transaction),
         )
+        .route(
+            "/api/recurring-transactions/:id",
+            put(routes::recurring_transactions::update_recurring_transaction)
+                .delete(routes::recurring_transactions::delete_recurring_transaction),
+        )
         .route("/api/assets", get(routes::assets::list_assets).post(routes::assets::create_asset))
+        .route(
+            "/api/assets/:id",
+            put(routes::assets::update_asset).delete(routes::assets::delete_asset),
+        )
         .route("/api/totals", get(routes::metrics::totals))
         .route("/api/history", get(routes::metrics::history))
         .route("/api/fx-rates", get(routes::metrics::fx_rates))

@@ -79,6 +79,45 @@ The Vite dev server runs at http://localhost:5173.
 - `JWT_SECRET` (used to sign auth tokens)
 - `RUST_LOG` (log filter, e.g. `info`)
 
+## API overview
+
+All API routes are prefixed with `/api` and require a JWT from `/api/login` (except register/login).
+
+### Accounts
+- `GET /api/accounts?limit=100&offset=0`
+- `POST /api/accounts`
+- `PUT /api/accounts/:id`
+- `DELETE /api/accounts/:id`
+
+### Account groups
+- `GET /api/account-groups?limit=100&offset=0`
+- `POST /api/account-groups`
+- `PUT /api/account-groups/:id`
+- `DELETE /api/account-groups/:id`
+
+### Assets
+- `GET /api/assets?limit=100&offset=0&start_date=<iso>&end_date=<iso>&account_id=<uuid>&account_group_id=<uuid>&currency_code=USD`
+- `POST /api/assets`
+- `PUT /api/assets/:id`
+- `DELETE /api/assets/:id`
+
+### Transactions
+- `GET /api/transactions?limit=100&offset=0&start_date=<iso>&end_date=<iso>&account_id=<uuid>&account_group_id=<uuid>&transaction_type=income&currency_code=USD`
+- `POST /api/transactions`
+- `PUT /api/transactions/:id`
+- `DELETE /api/transactions/:id`
+
+### Recurring transactions
+- `GET /api/recurring-transactions?limit=100&offset=0`
+- `POST /api/recurring-transactions`
+- `PUT /api/recurring-transactions/:id`
+- `DELETE /api/recurring-transactions/:id`
+
+### Metrics
+- `GET /api/totals`
+- `GET /api/history`
+- `GET /api/fx-rates`
+
 ## Database migrations
 
 Migrations live in `backend/migrations`. The API boots with `sqlx::migrate!()` and will apply them automatically when `DATABASE_URL` is reachable.

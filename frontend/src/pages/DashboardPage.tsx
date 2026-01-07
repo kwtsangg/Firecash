@@ -5,15 +5,17 @@ import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import KpiCard from "../components/KpiCard";
 import Modal from "../components/Modal";
 import { useCurrency } from "../components/CurrencyContext";
+import { useSelection } from "../components/SelectionContext";
 import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
 
 export default function DashboardPage() {
   const accountOptions = ["Primary Account", "Retirement", "Side Hustle"];
   const budgetCategories = ["Housing", "Investing", "Lifestyle", "Bills"];
   const { currency: displayCurrency } = useCurrency();
+  const { account: selectedAccount, group: selectedGroup } = useSelection();
   const [range, setRange] = useState<DateRange>({
-    from: "2024-01-01",
-    to: "2024-12-31",
+    from: "2026-01-01",
+    to: "2026-12-31",
   });
   const [toast, setToast] = useState<ActionToastData | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
@@ -22,12 +24,12 @@ export default function DashboardPage() {
   const [transactionAccount, setTransactionAccount] = useState(accountOptions[0]);
   const [transactionType, setTransactionType] = useState("Income");
   const [transactionAmount, setTransactionAmount] = useState("");
-  const [transactionDate, setTransactionDate] = useState("2024-04-20");
+  const [transactionDate, setTransactionDate] = useState("2026-04-20");
   const [transactionNotes, setTransactionNotes] = useState("");
   const [transactionCurrency, setTransactionCurrency] = useState("USD");
   const [budgetCategory, setBudgetCategory] = useState(budgetCategories[0]);
   const [budgetAmount, setBudgetAmount] = useState("");
-  const [budgetStart, setBudgetStart] = useState("2024-04-01");
+  const [budgetStart, setBudgetStart] = useState("2026-04-01");
   const [transactions, setTransactions] = useState<
     {
       account: string;
@@ -43,7 +45,7 @@ export default function DashboardPage() {
       type: "Income",
       amount: 2400,
       currency: "USD",
-      date: "2024-04-18",
+      date: "2026-04-18",
       notes: "Salary",
     },
     {
@@ -51,16 +53,16 @@ export default function DashboardPage() {
       type: "Expense",
       amount: 320,
       currency: "USD",
-      date: "2024-04-16",
+      date: "2026-04-16",
       notes: "Broker fee",
     },
   ]);
 
   const baseAssets = useMemo(
     () => [
-      { name: "Cash", amount: 42000, currency: "USD" },
-      { name: "Brokerage", amount: 56000, currency: "USD" },
-      { name: "Vacation Fund", amount: 18000, currency: "EUR" },
+      { name: "Cash", amount: 42000, currency: "USD", account: "Primary Account" },
+      { name: "Brokerage", amount: 56000, currency: "USD", account: "Retirement" },
+      { name: "Vacation Fund", amount: 18000, currency: "EUR", account: "Side Hustle" },
     ],
     [],
   );
@@ -71,32 +73,34 @@ export default function DashboardPage() {
 
   const baseSeries = useMemo(
     () => [
-      { date: "2024-01-15", value: 52 },
-      { date: "2024-02-10", value: 60 },
-      { date: "2024-03-05", value: 68 },
-      { date: "2024-03-26", value: 64 },
-      { date: "2024-04-12", value: 71 },
-      { date: "2024-05-01", value: 78 },
-      { date: "2024-05-21", value: 83 },
-      { date: "2024-06-14", value: 79 },
-      { date: "2024-07-02", value: 88 },
-      { date: "2024-08-06", value: 94 },
-      { date: "2024-09-17", value: 102 },
-      { date: "2024-11-04", value: 110 },
+      { date: "2026-01-15", value: 52 },
+      { date: "2026-02-10", value: 60 },
+      { date: "2026-03-05", value: 68 },
+      { date: "2026-03-26", value: 64 },
+      { date: "2026-04-12", value: 71 },
+      { date: "2026-05-01", value: 78 },
+      { date: "2026-05-21", value: 83 },
+      { date: "2026-06-14", value: 79 },
+      { date: "2026-07-02", value: 88 },
+      { date: "2026-08-06", value: 94 },
+      { date: "2026-09-17", value: 102 },
+      { date: "2026-11-04", value: 110 },
     ],
     [],
   );
-  const linePoints = useMemo(() => {
+  const lineSeries = useMemo(() => {
     const fromDate = new Date(range.from);
     const toDate = new Date(range.to);
     const multiplier = 1 + refreshTick * 0.01;
-    const filtered = baseSeries
-      .filter((point) => {
-        const date = new Date(point.date);
-        return date >= fromDate && date <= toDate;
-      });
+    const filtered = baseSeries.filter((point) => {
+      const date = new Date(point.date);
+      return date >= fromDate && date <= toDate;
+    });
     const series = filtered.length > 0 ? filtered : baseSeries;
-    return series.map((point) => Math.round(point.value * multiplier));
+    return series.map((point) => ({
+      date: point.date,
+      value: Math.round(point.value * multiplier),
+    }));
   }, [baseSeries, range.from, range.to, refreshTick]);
   const barValues = useMemo(
     () => [
@@ -120,15 +124,39 @@ export default function DashboardPage() {
     [],
   );
 
-  const totalAssets = baseAssets.reduce(
+  const accountGroups: Record<string, string> = {
+    "Primary Account": "Cashflow",
+    Retirement: "Investments",
+    "Side Hustle": "Cashflow",
+  };
+  const matchesSelection = (account: string) =>
+    (selectedAccount === "All Accounts" || selectedAccount === account) &&
+    (selectedGroup === "All Groups" || accountGroups[account] === selectedGroup);
+  const filteredAssets = baseAssets.filter((asset) => matchesSelection(asset.account));
+  const filteredTransactions = transactions.filter((transaction) =>
+    matchesSelection(transaction.account),
+  );
+
+  const totalAssets = filteredAssets.reduce(
     (sum, asset) =>
       sum + convertAmount(asset.amount, asset.currency, displayCurrency),
     0,
   );
-  const netIncome = transactions.reduce((sum, transaction) => {
+  const netIncome = filteredTransactions.reduce((sum, transaction) => {
     const signedAmount = transaction.type === "Expense" ? -transaction.amount : transaction.amount;
     return sum + convertAmount(signedAmount, transaction.currency, displayCurrency);
   }, 0);
+  const linePoints = lineSeries.map((point) => point.value);
+  const axisXLabels = lineSeries.map((point) =>
+    new Date(point.date).toLocaleString("en-US", { month: "short" }),
+  );
+  const maxValue = Math.max(...linePoints);
+  const minValue = Math.min(...linePoints);
+  const axisYLabels = [
+    formatCurrency(maxValue, displayCurrency),
+    formatCurrency(Math.round((maxValue + minValue) / 2), displayCurrency),
+    formatCurrency(minValue, displayCurrency),
+  ];
 
   return (
     <section className="page">
@@ -349,7 +377,7 @@ export default function DashboardPage() {
           <DateRangePicker value={range} onChange={setRange} />
         </div>
         <div className="chart-surface">
-          <LineChart points={linePoints} />
+          <LineChart points={linePoints} xLabels={axisXLabels} yLabels={axisYLabels} />
         </div>
       </div>
       <div className="split-grid">
@@ -409,7 +437,7 @@ export default function DashboardPage() {
           <span>Amount ({displayCurrency})</span>
           <span>Notes</span>
         </div>
-        {transactions.map((transaction) => (
+        {filteredTransactions.map((transaction) => (
           <div
             className="list-row columns-5"
             key={`${transaction.date}-${transaction.amount}-${transaction.notes}`}
@@ -417,11 +445,16 @@ export default function DashboardPage() {
             <span>{transaction.date}</span>
             <span>{transaction.account}</span>
             <span>{transaction.type}</span>
-            <span>
-              {formatCurrency(
-                convertAmount(transaction.amount, transaction.currency, displayCurrency),
-                displayCurrency,
-              )}
+            <span className="amount-cell">
+              <span>
+                {formatCurrency(
+                  convertAmount(transaction.amount, transaction.currency, displayCurrency),
+                  displayCurrency,
+                )}
+              </span>
+              <span className="subtext">
+                {formatCurrency(transaction.amount, transaction.currency)} {transaction.currency}
+              </span>
             </span>
             <span>{transaction.notes}</span>
           </div>

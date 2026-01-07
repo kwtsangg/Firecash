@@ -5,9 +5,11 @@ import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import KpiCard from "../components/KpiCard";
 import Modal from "../components/Modal";
 import { useCurrency } from "../components/CurrencyContext";
+import { useSelection } from "../components/SelectionContext";
 import { convertAmount, formatCurrency } from "../utils/currency";
 
 type Holding = {
+  id: string;
   ticker: string;
   shares: number;
   avgEntry: number;
@@ -22,19 +24,21 @@ export default function StocksPage() {
   const accountOptions = ["Primary Account", "Retirement", "HKD Growth"];
   const supportedTickers = new Set(["AAPL", "TSLA", "0700.HK", "MSFT", "NVDA"]);
   const { currency: displayCurrency } = useCurrency();
+  const { account: selectedAccount, group: selectedGroup } = useSelection();
   const [toast, setToast] = useState<ActionToastData | null>(null);
   const [range, setRange] = useState<DateRange>({
-    from: "2024-01-01",
-    to: "2024-04-30",
+    from: "2026-01-01",
+    to: "2026-04-30",
   });
   const [isHoldingOpen, setIsHoldingOpen] = useState(false);
   const [holdingTicker, setHoldingTicker] = useState("");
   const [holdingShares, setHoldingShares] = useState("");
   const [holdingPrice, setHoldingPrice] = useState("");
-  const [holdingDate, setHoldingDate] = useState("2024-04-20");
+  const [holdingDate, setHoldingDate] = useState("2026-04-20");
   const [holdingAccount, setHoldingAccount] = useState(accountOptions[0]);
   const [holdings, setHoldings] = useState<Holding[]>([
     {
+      id: "AAPL-2026-01-15",
       ticker: "AAPL",
       shares: 42,
       avgEntry: 168.2,
@@ -42,19 +46,21 @@ export default function StocksPage() {
       change: 1.4,
       currency: "USD",
       account: "Primary Account",
-      entryDate: "2024-01-15",
+      entryDate: "2026-01-15",
     },
     {
+      id: "TSLA-2026-02-11",
       ticker: "TSLA",
       shares: 16,
       avgEntry: 192.4,
       price: 175.22,
       change: -0.6,
       currency: "USD",
-      account: "Investments",
-      entryDate: "2024-02-11",
+      account: "Retirement",
+      entryDate: "2026-02-11",
     },
     {
+      id: "0700.HK-2026-03-03",
       ticker: "0700.HK",
       shares: 55,
       avgEntry: 282.1,
@@ -62,7 +68,7 @@ export default function StocksPage() {
       change: 0.9,
       currency: "HKD",
       account: "HKD Growth",
-      entryDate: "2024-03-03",
+      entryDate: "2026-03-03",
     },
   ]);
 
@@ -72,18 +78,18 @@ export default function StocksPage() {
 
   const performanceSeries = useMemo(
     () => [
-      { date: "2024-01-08", value: 120 },
-      { date: "2024-01-28", value: 132 },
-      { date: "2024-02-18", value: 128 },
-      { date: "2024-03-10", value: 136 },
-      { date: "2024-03-22", value: 142 },
-      { date: "2024-04-02", value: 150 },
-      { date: "2024-04-18", value: 147 },
-      { date: "2024-05-06", value: 158 },
-      { date: "2024-06-12", value: 162 },
-      { date: "2024-07-08", value: 171 },
-      { date: "2024-08-14", value: 176 },
-      { date: "2024-09-03", value: 188 },
+      { date: "2026-01-08", value: 120 },
+      { date: "2026-01-28", value: 132 },
+      { date: "2026-02-18", value: 128 },
+      { date: "2026-03-10", value: 136 },
+      { date: "2026-03-22", value: 142 },
+      { date: "2026-04-02", value: 150 },
+      { date: "2026-04-18", value: 147 },
+      { date: "2026-05-06", value: 158 },
+      { date: "2026-06-12", value: 162 },
+      { date: "2026-07-08", value: 171 },
+      { date: "2026-08-14", value: 176 },
+      { date: "2026-09-03", value: 188 },
     ],
     [],
   );
@@ -116,16 +122,32 @@ export default function StocksPage() {
     ],
     [],
   );
-  const totalEquity = holdings.reduce(
+  const accountGroups: Record<string, string> = {
+    "Primary Account": "Cashflow",
+    Retirement: "Investments",
+    "HKD Growth": "Investments",
+  };
+  const matchesSelection = (account: string) =>
+    (selectedAccount === "All Accounts" || selectedAccount === account) &&
+    (selectedGroup === "All Groups" || accountGroups[account] === selectedGroup);
+  const filteredHoldings = holdings.filter((holding) =>
+    matchesSelection(holding.account),
+  );
+  const totalEquity = filteredHoldings.reduce(
     (sum, holding) =>
       sum + convertAmount(holding.price * holding.shares, holding.currency, displayCurrency),
     0,
   );
-  const dayChange = holdings.reduce((sum, holding) => {
+  const dayChange = filteredHoldings.reduce((sum, holding) => {
     const holdingValue = holding.price * holding.shares;
     const changeValue = (holding.change / 100) * holdingValue;
     return sum + convertAmount(changeValue, holding.currency, displayCurrency);
   }, 0);
+  const totalMarketValue = filteredHoldings.reduce(
+    (sum, holding) =>
+      sum + convertAmount(holding.price * holding.shares, holding.currency, displayCurrency),
+    0,
+  );
 
   return (
     <section className="page">
@@ -190,6 +212,7 @@ export default function StocksPage() {
                 }
                 setHoldings((prev) => [
                   {
+                    id: `${normalizedTicker}-${Date.now()}`,
                     ticker: normalizedTicker,
                     shares,
                     avgEntry: price,
@@ -205,7 +228,7 @@ export default function StocksPage() {
                 setHoldingTicker("");
                 setHoldingShares("");
                 setHoldingPrice("");
-                setHoldingDate("2024-04-20");
+                setHoldingDate("2026-04-20");
                 showToast("Holding saved", `Added ${normalizedTicker} to ${holdingAccount}.`);
               }}
             >
@@ -324,16 +347,17 @@ export default function StocksPage() {
         </div>
       </div>
       <div className="card list-card">
-        <div className="list-row list-header columns-6">
+        <div className="list-row list-header columns-7">
           <span>Ticker</span>
           <span>Shares</span>
           <span>Avg Entry</span>
           <span>Last Price</span>
+          <span>Market Value ({displayCurrency})</span>
           <span>Day Change</span>
           <span>Account</span>
         </div>
-        {holdings.map((row) => (
-          <div className="list-row columns-6" key={row.ticker}>
+        {filteredHoldings.map((row) => (
+          <div className="list-row columns-7" key={row.id}>
             <span>{row.ticker}</span>
             <span>{row.shares}</span>
             <span>
@@ -344,6 +368,12 @@ export default function StocksPage() {
               {row.currency === "HKD" ? "HK$" : "$"}
               {row.price.toFixed(2)}
             </span>
+            <span>
+              {formatCurrency(
+                convertAmount(row.price * row.shares, row.currency, displayCurrency),
+                displayCurrency,
+              )}
+            </span>
             <span className={row.change < 0 ? "status warn" : "status"}>
               {row.change > 0 ? "+" : ""}
               {row.change.toFixed(1)}%
@@ -351,6 +381,15 @@ export default function StocksPage() {
             <span>{row.account}</span>
           </div>
         ))}
+        <div className="list-row columns-7 summary-row">
+          <span>Total</span>
+          <span>-</span>
+          <span>-</span>
+          <span>-</span>
+          <span>{formatCurrency(totalMarketValue, displayCurrency)}</span>
+          <span>-</span>
+          <span>-</span>
+        </div>
       </div>
       <div className="card">
         <h3>Action center</h3>

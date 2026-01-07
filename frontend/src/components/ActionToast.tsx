@@ -16,11 +16,21 @@ export default function ActionToast({ toast, onDismiss }: ActionToastProps) {
       onDismiss();
     }, 2600);
     return () => window.clearTimeout(timeout);
-  }, [onDismiss]);
+  }, [toast, onDismiss]);
 
   return (
     <div className="toast toast-floating" role="status" aria-live="polite">
-      <div className="toast-title">{toast.title}</div>
+      <div className="toast-header">
+        <div className="toast-title">{toast.title}</div>
+        <button
+          type="button"
+          className="toast-close"
+          onClick={onDismiss}
+          aria-label="Dismiss notification"
+        >
+          ×
+        </button>
+      </div>
       {toast.description && <div className="toast-body">{toast.description}</div>}
     </div>
   );

@@ -1,11 +1,13 @@
 import { useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
 import Modal from "../components/Modal";
+import { useSelection } from "../components/SelectionContext";
 
 export default function AccountsPage() {
   const groupOptions = ["Investments", "Cashflow", "Long Term"];
   const accountOptions = ["Primary Account", "Retirement", "Vacation Fund", "HKD Growth"];
   const [toast, setToast] = useState<ActionToastData | null>(null);
+  const { account: selectedAccount, group: selectedGroup } = useSelection();
   const [isGroupOpen, setIsGroupOpen] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isMembershipOpen, setIsMembershipOpen] = useState(false);
@@ -18,6 +20,18 @@ export default function AccountsPage() {
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
   };
+
+  const accountRows = [
+    { name: "Primary Account", currency: "USD", status: "Active", group: "Cashflow" },
+    { name: "Retirement", currency: "USD", status: "Active", group: "Investments" },
+    { name: "Vacation Fund", currency: "EUR", status: "Paused", group: "Cashflow" },
+    { name: "HKD Growth", currency: "HKD", status: "Active", group: "Investments" },
+  ];
+  const filteredAccounts = accountRows.filter(
+    (row) =>
+      (selectedAccount === "All Accounts" || row.name === selectedAccount) &&
+      (selectedGroup === "All Groups" || row.group === selectedGroup),
+  );
 
   return (
     <section className="page">
@@ -193,12 +207,7 @@ export default function AccountsPage() {
             <span>Currency</span>
             <span>Status</span>
           </div>
-          {[
-            { name: "Primary Account", currency: "USD", status: "Active" },
-            { name: "Retirement", currency: "USD", status: "Active" },
-            { name: "Vacation Fund", currency: "EUR", status: "Paused" },
-            { name: "HKD Growth", currency: "HKD", status: "Active" },
-          ].map((row) => (
+          {filteredAccounts.map((row) => (
             <div className="list-row columns-3" key={row.name}>
               <span>{row.name}</span>
               <span>{row.currency}</span>

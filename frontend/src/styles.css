@@ -27,6 +27,10 @@ a {
   min-height: 100vh;
 }
 
+.app-shell.sidebar-collapsed {
+  grid-template-columns: 1fr;
+}
+
 .top-nav {
   grid-column: 1 / -1;
   display: flex;
@@ -43,6 +47,12 @@ a {
   font-weight: 600;
 }
 
+.logo-area {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .nav-actions {
   display: flex;
   gap: 12px;
@@ -53,6 +63,32 @@ a {
   padding: 32px 16px;
   background: rgba(16, 18, 29, 0.95);
   border-right: 1px solid rgba(255, 255, 255, 0.05);
+  position: sticky;
+  top: 72px;
+  height: calc(100vh - 72px);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #9aa3ba;
+}
+
+.sidebar-title {
+  font-weight: 600;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  font-size: 12px;
+  color: #9aa3ba;
 }
 
 .nav-link {
@@ -70,6 +106,15 @@ a {
 
 .content {
   padding: 32px;
+}
+
+.icon-button {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.1);
+  color: inherit;
+  border-radius: 10px;
+  padding: 6px 10px;
+  cursor: pointer;
 }
 
 .page {
@@ -218,6 +263,11 @@ a {
   height: 100%;
 }
 
+.chart-axis-text {
+  fill: #9aa3ba;
+  font-size: 4px;
+}
+
 .bar-chart {
   display: flex;
   align-items: flex-end;
@@ -294,6 +344,11 @@ a {
   font-size: 14px;
 }
 
+.summary-row {
+  font-weight: 600;
+  border-bottom: none;
+}
+
 .columns-5 {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
@@ -305,6 +360,16 @@ a {
 .list-header {
   text-transform: uppercase;
   font-size: 11px;
+  color: #9aa3ba;
+}
+
+.amount-cell {
+  display: grid;
+  gap: 4px;
+}
+
+.subtext {
+  font-size: 12px;
   color: #9aa3ba;
 }
 
@@ -432,8 +497,23 @@ a {
   z-index: 1000;
 }
 
+.toast-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .toast-title {
   font-weight: 600;
+}
+
+.toast-close {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 18px;
+  cursor: pointer;
 }
 
 .toast-body {
@@ -443,6 +523,10 @@ a {
 
 .columns-6 {
   grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.columns-7 {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
 .modal-overlay {

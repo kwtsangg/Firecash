@@ -7,6 +7,7 @@ import Modal from "../components/Modal";
 
 export default function DashboardPage() {
   const accountOptions = ["Primary Account", "Retirement", "Side Hustle"];
+  const budgetCategories = ["Housing", "Investing", "Lifestyle", "Bills"];
   const [range, setRange] = useState<DateRange>({
     from: "2024-01-01",
     to: "2024-12-31",
@@ -14,11 +15,15 @@ export default function DashboardPage() {
   const [toast, setToast] = useState<ActionToastData | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
   const [isTransactionOpen, setIsTransactionOpen] = useState(false);
+  const [isBudgetOpen, setIsBudgetOpen] = useState(false);
   const [transactionAccount, setTransactionAccount] = useState(accountOptions[0]);
   const [transactionType, setTransactionType] = useState("Income");
   const [transactionAmount, setTransactionAmount] = useState("");
   const [transactionDate, setTransactionDate] = useState("2024-04-20");
   const [transactionNotes, setTransactionNotes] = useState("");
+  const [budgetCategory, setBudgetCategory] = useState(budgetCategories[0]);
+  const [budgetAmount, setBudgetAmount] = useState("");
+  const [budgetStart, setBudgetStart] = useState("2024-04-01");
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
@@ -45,12 +50,13 @@ export default function DashboardPage() {
     const fromDate = new Date(range.from);
     const toDate = new Date(range.to);
     const multiplier = 1 + refreshTick * 0.01;
-    return baseSeries
+    const filtered = baseSeries
       .filter((point) => {
         const date = new Date(point.date);
         return date >= fromDate && date <= toDate;
-      })
-      .map((point) => Math.round(point.value * multiplier));
+      });
+    const series = filtered.length > 0 ? filtered : baseSeries;
+    return series.map((point) => Math.round(point.value * multiplier));
   }, [baseSeries, range.from, range.to, refreshTick]);
   const barValues = useMemo(
     () => [
@@ -176,6 +182,62 @@ export default function DashboardPage() {
           </label>
         </div>
       </Modal>
+      <Modal
+        title="Set budget"
+        description="Plan monthly targets for a specific category."
+        isOpen={isBudgetOpen}
+        onClose={() => setIsBudgetOpen(false)}
+        footer={
+          <>
+            <button className="pill" type="button" onClick={() => setIsBudgetOpen(false)}>
+              Cancel
+            </button>
+            <button
+              className="pill primary"
+              type="button"
+              onClick={() => {
+                setIsBudgetOpen(false);
+                showToast("Budget saved", "Your target has been updated.");
+              }}
+            >
+              Save Budget
+            </button>
+          </>
+        }
+      >
+        <div className="form-grid">
+          <label>
+            Category
+            <select
+              value={budgetCategory}
+              onChange={(event) => setBudgetCategory(event.target.value)}
+            >
+              {budgetCategories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Monthly amount
+            <input
+              type="number"
+              placeholder="0.00"
+              value={budgetAmount}
+              onChange={(event) => setBudgetAmount(event.target.value)}
+            />
+          </label>
+          <label>
+            Start date
+            <input
+              type="date"
+              value={budgetStart}
+              onChange={(event) => setBudgetStart(event.target.value)}
+            />
+          </label>
+        </div>
+      </Modal>
       {toast && <ActionToast toast={toast} onDismiss={() => setToast(null)} />}
       <div className="card-grid">
         <KpiCard
@@ -246,7 +308,7 @@ export default function DashboardPage() {
           </button>
           <button
             className="pill"
-            onClick={() => showToast("Budget builder opened", "Adjust spending targets.")}
+            onClick={() => setIsBudgetOpen(true)}
           >
             Set Budget
           </button>

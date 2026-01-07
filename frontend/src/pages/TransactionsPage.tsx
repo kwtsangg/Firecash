@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import Modal from "../components/Modal";
@@ -21,6 +21,19 @@ export default function TransactionsPage() {
   const [transactionAmount, setTransactionAmount] = useState("");
   const [transactionDate, setTransactionDate] = useState("2026-04-20");
   const [transactionCurrency, setTransactionCurrency] = useState("USD");
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [importStep, setImportStep] = useState<"upload" | "mapping" | "review">("upload");
+  const [importFileName, setImportFileName] = useState("");
+  const [importColumns, setImportColumns] = useState<string[]>([]);
+  const [importRows, setImportRows] = useState<string[][]>([]);
+  const [importMapping, setImportMapping] = useState({
+    account_id: "",
+    amount: "",
+    currency_code: "",
+    transaction_type: "",
+    description: "",
+    occurred_at: "",
+  });
   const [transactions, setTransactions] = useState<
     {
       date: string;
@@ -61,8 +74,46 @@ export default function TransactionsPage() {
     matchesSelection(row.account),
   );
 
+  const previewRows = useMemo(() => importRows.slice(0, 5), [importRows]);
+
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
+  };
+
+  const resetImportState = () => {
+    setImportStep("upload");
+    setImportFileName("");
+    setImportColumns([]);
+    setImportRows([]);
+    setImportMapping({
+      account_id: "",
+      amount: "",
+      currency_code: "",
+      transaction_type: "",
+      description: "",
+      occurred_at: "",
+    });
+  };
+
+  const handleImportFile = async (file: File | null) => {
+    if (!file) {
+      return;
+    }
+    const text = await file.text();
+    const { columns, rows } = parseCsv(text);
+    setImportFileName(file.name);
+    setImportColumns(columns);
+    setImportRows(rows);
+    setImportMapping((prev) => ({
+      ...prev,
+      account_id: columns[0] ?? "",
+      amount: columns[1] ?? "",
+      currency_code: columns[2] ?? "",
+      transaction_type: columns[3] ?? "",
+      description: columns[4] ?? "",
+      occurred_at: columns[5] ?? "",
+    }));
+    setImportStep("mapping");
   };
 
   return (
@@ -76,9 +127,23 @@ export default function TransactionsPage() {
           <DateRangePicker value={range} onChange={setRange} />
           <button
             className="pill"
-            onClick={() => showToast("Export queued", "Transactions will download shortly.")}
+            onClick={() =>
+              showToast(
+                "Export queued",
+                "Use the CSV export endpoint to download the current filters.",
+              )
+            }
           >
             Export CSV
+          </button>
+          <button
+            className="pill"
+            onClick={() => {
+              resetImportState();
+              setIsImportOpen(true);
+            }}
+          >
+            Import CSV
           </button>
           <button
             className="pill primary"
@@ -187,6 +252,181 @@ export default function TransactionsPage() {
           </label>
         </div>
       </Modal>
+      <Modal
+        title="Import transactions"
+        description="Upload a CSV file, map the columns, and preview before importing."
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        footer={
+          <>
+            <button
+              className="pill"
+              type="button"
+              onClick={() => {
+                setIsImportOpen(false);
+                resetImportState();
+              }}
+            >
+              Cancel
+            </button>
+            {importStep === "upload" && (
+              <button
+                className="pill primary"
+                type="button"
+                onClick={() => setImportStep("mapping")}
+                disabled={importColumns.length === 0}
+              >
+                Continue
+              </button>
+            )}
+            {importStep === "mapping" && (
+              <button
+                className="pill primary"
+                type="button"
+                onClick={() => setImportStep("review")}
+                disabled={!importMapping.account_id || !importMapping.amount || !importMapping.occurred_at}
+              >
+                Review
+              </button>
+            )}
+            {importStep === "review" && (
+              <button
+                className="pill primary"
+                type="button"
+                onClick={() => {
+                  setIsImportOpen(false);
+                  showToast(
+                    "Import ready",
+                    `Mapped ${importRows.length} rows from ${importFileName || "CSV"}.`,
+                  );
+                  resetImportState();
+                }}
+              >
+                Import
+              </button>
+            )}
+          </>
+        }
+      >
+        <div className="import-wizard">
+          <div className="import-steps">
+            {["Upload", "Map columns", "Review"].map((label, index) => (
+              <div
+                key={label}
+                className={`import-step ${
+                  importStep === ["upload", "mapping", "review"][index] ? "active" : ""
+                }`}
+              >
+                <span className="import-step-index">{index + 1}</span>
+                <span>{label}</span>
+              </div>
+            ))}
+          </div>
+          {importStep === "upload" && (
+            <div className="import-upload">
+              <p className="muted">
+                Supported columns include account ID, amount, currency, type, description, and
+                occurred-at timestamps.
+              </p>
+              <label className="import-file">
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={(event) => handleImportFile(event.target.files?.[0] ?? null)}
+                />
+                <span className="pill">Choose CSV file</span>
+                {importFileName && <span className="muted">{importFileName}</span>}
+              </label>
+            </div>
+          )}
+          {importStep === "mapping" && (
+            <>
+              <div className="form-grid">
+                {[
+                  { key: "account_id", label: "Account ID" },
+                  { key: "amount", label: "Amount" },
+                  { key: "currency_code", label: "Currency code" },
+                  { key: "transaction_type", label: "Transaction type" },
+                  { key: "description", label: "Description (optional)" },
+                  { key: "occurred_at", label: "Occurred at" },
+                ].map((field) => (
+                  <label key={field.key}>
+                    {field.label}
+                    <select
+                      value={importMapping[field.key as keyof typeof importMapping]}
+                      onChange={(event) =>
+                        setImportMapping((prev) => ({
+                          ...prev,
+                          [field.key]: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">Select column</option>
+                      {importColumns.map((column) => (
+                        <option key={column} value={column}>
+                          {column}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+              </div>
+              <div className="import-preview">
+                <div className="list-row list-header columns-5">
+                  {importColumns.slice(0, 5).map((column) => (
+                    <span key={column}>{column}</span>
+                  ))}
+                </div>
+                {previewRows.map((row, rowIndex) => (
+                  <div className="list-row columns-5" key={`preview-${rowIndex}`}>
+                    {row.slice(0, 5).map((cell, cellIndex) => (
+                      <span key={`cell-${rowIndex}-${cellIndex}`}>{cell || "—"}</span>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          {importStep === "review" && (
+            <div className="import-review">
+              <div className="chip-grid">
+                <span className="chip">{importRows.length} rows detected</span>
+                <span className="chip">{importColumns.length} columns</span>
+                {importFileName && <span className="chip">{importFileName}</span>}
+              </div>
+              <div className="import-summary">
+                <div>
+                  <span className="muted">Account ID</span>
+                  <strong>{importMapping.account_id || "Not mapped"}</strong>
+                </div>
+                <div>
+                  <span className="muted">Amount</span>
+                  <strong>{importMapping.amount || "Not mapped"}</strong>
+                </div>
+                <div>
+                  <span className="muted">Currency</span>
+                  <strong>{importMapping.currency_code || "Not mapped"}</strong>
+                </div>
+                <div>
+                  <span className="muted">Type</span>
+                  <strong>{importMapping.transaction_type || "Not mapped"}</strong>
+                </div>
+                <div>
+                  <span className="muted">Occurred at</span>
+                  <strong>{importMapping.occurred_at || "Not mapped"}</strong>
+                </div>
+                <div>
+                  <span className="muted">Description</span>
+                  <strong>{importMapping.description || "Not mapped"}</strong>
+                </div>
+              </div>
+              <p className="muted">
+                Review the mapping above before submitting the CSV to the import endpoint.
+              </p>
+            </div>
+          )}
+        </div>
+      </Modal>
       {toast && <ActionToast toast={toast} onDismiss={() => setToast(null)} />}
       <div className="card">
         <div className="card-header">
@@ -259,4 +499,49 @@ export default function TransactionsPage() {
       </div>
     </section>
   );
+}
+
+type ParsedCsv = {
+  columns: string[];
+  rows: string[][];
+};
+
+function parseCsv(text: string): ParsedCsv {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) {
+    return { columns: [], rows: [] };
+  }
+  const columns = splitCsvLine(lines[0]);
+  const rows = lines.slice(1).map((line) => splitCsvLine(line));
+  return { columns, rows };
+}
+
+function splitCsvLine(line: string): string[] {
+  const values: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    if (char === '"' && line[i + 1] === '"') {
+      current += '"';
+      i += 1;
+      continue;
+    }
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (char === "," && !inQuotes) {
+      values.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  values.push(current.trim());
+  return values.map((value) => value.replace(/^"|"$/g, ""));
 }

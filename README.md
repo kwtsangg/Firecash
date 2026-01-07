@@ -87,3 +87,50 @@ Migrations live in `backend/migrations`. The API boots with `sqlx::migrate!()` a
 
 - The worker is a placeholder scaffold for stock and FX ingestion; hook it up to your preferred data provider.
 - The frontend lockfile (`frontend/package-lock.json`) is committed for reproducible installs.
+
+## CSV import/export
+
+The API supports exporting filtered transactions and importing CSV uploads.
+
+### Export
+
+`GET /api/transactions/export`
+
+Query parameters:
+- `start` and `end`: date range filters in `YYYY-MM-DD` format.
+- `account_id`: optional account UUID to scope the export.
+
+The response is a `text/csv` attachment with the following columns:
+`account_id, amount, currency_code, transaction_type, description, occurred_at`.
+
+### Import
+
+`POST /api/transactions/import` expects a `multipart/form-data` payload with:
+- `file`: the CSV upload.
+- `mapping`: JSON string defining which CSV columns map to each field.
+
+Mapping JSON example:
+
+```json
+{
+  "mapping": {
+    "account_id": "Account ID",
+    "amount": "Amount",
+    "currency_code": "Currency",
+    "transaction_type": "Type",
+    "description": "Memo",
+    "occurred_at": "Occurred At"
+  }
+}
+```
+
+Supported datetime formats for `occurred_at` are RFC3339 timestamps (e.g. `2026-04-18T12:00:00Z`)
+or `YYYY-MM-DD` dates.
+
+Example CSV:
+
+```csv
+Account ID,Amount,Currency,Type,Memo,Occurred At
+5d7a7b2e-4e5b-4d1a-9d2a-2dbedc08d7c1,2400,USD,Income,April salary,2026-04-18
+5d7a7b2e-4e5b-4d1a-9d2a-2dbedc08d7c1,-320,USD,Expense,Rent,2026-04-20T09:00:00Z
+```

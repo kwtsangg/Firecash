@@ -56,6 +56,14 @@ async fn main() {
                 .post(routes::transactions::create_transaction),
         )
         .route(
+            "/api/transactions/import",
+            post(routes::transactions::import_transactions),
+        )
+        .route(
+            "/api/transactions/export",
+            get(routes::transactions::export_transactions),
+        )
+        .route(
             "/api/recurring-transactions",
             get(routes::recurring_transactions::list_recurring_transactions)
                 .post(routes::recurring_transactions::create_recurring_transaction),

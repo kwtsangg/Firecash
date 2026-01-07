@@ -97,6 +97,25 @@ export function LineChart({
     );
   });
 
+  const defaultYLabels = majorYTicks.map((tick, index) => {
+    const value = chartMax - (index / (majorYCount - 1)) * chartRange;
+    const label = formatValue ? formatValue(value) : value.toFixed(0);
+    return { label, position: tick };
+  });
+
+  const defaultXLabels = majorXTicks.map((tick, index) => {
+    if (labels.length === 0) {
+      return { label: `${index + 1}`, position: tick };
+    }
+    const labelIndex = Math.round((index / (majorXCount - 1)) * (labels.length - 1));
+    const rawLabel = labels[labelIndex];
+    const label = formatLabel ? formatLabel(rawLabel) : rawLabel;
+    return { label, position: tick };
+  });
+
+  const resolvedYLabels = yLabels.length ? yLabels : defaultYLabels;
+  const resolvedXLabels = xLabels.length ? xLabels : defaultXLabels;
+
   const tooltipValue =
     activePoint && formatValue
       ? formatValue(activePoint.value)
@@ -205,7 +224,7 @@ export function LineChart({
             />
           </g>
         ) : null}
-        {yLabels.map((item, index) => (
+        {resolvedYLabels.map((item, index) => (
           <text
             key={`y-${item.label}-${index}`}
             x="2"
@@ -216,7 +235,7 @@ export function LineChart({
             {item.label}
           </text>
         ))}
-        {xLabels.map((item, index) => (
+        {resolvedXLabels.map((item, index) => (
           <text
             key={`x-${item.label}-${index}`}
             x={item.position}
@@ -253,17 +272,64 @@ type BarChartProps = {
 
 export function BarChart({ values }: BarChartProps) {
   const max = Math.max(...values.map((item) => item.value), 1);
+  const majorYCount = 5;
+  const minorPerMajor = 1;
+  const majorTicks = Array.from({ length: majorYCount }, (_, index) =>
+    (index / (majorYCount - 1)) * 100,
+  );
+  const minorTicks = majorTicks.flatMap((start, index) => {
+    const next = majorTicks[index + 1];
+    if (next === undefined) {
+      return [];
+    }
+    return Array.from({ length: minorPerMajor }, (_, step) =>
+      start + ((step + 1) * (next - start)) / (minorPerMajor + 1),
+    );
+  });
+  const axisLabels = majorTicks.map((position, index) => {
+    const value = max - (index / (majorYCount - 1)) * max;
+    return { label: value.toFixed(0), position };
+  });
   return (
     <div className="bar-chart">
-      {values.map((item) => (
-        <div key={item.label} className="bar-item">
-          <div
-            className="bar-fill"
-            style={{ height: `${(item.value / max) * 100}%` }}
+      <div className="bar-chart-grid">
+        {majorTicks.map((tick, index) => (
+          <span
+            key={`bar-major-${index}`}
+            className="chart-grid-major"
+            style={{ top: `${tick}%` }}
           />
-          <span>{item.label}</span>
-        </div>
-      ))}
+        ))}
+        {minorTicks.map((tick, index) => (
+          <span
+            key={`bar-minor-${index}`}
+            className="chart-grid-minor"
+            style={{ top: `${tick}%` }}
+          />
+        ))}
+      </div>
+      <div className="bar-chart-axis">
+        {axisLabels.map((item, index) => (
+          <span
+            key={`bar-axis-${index}`}
+            className="bar-chart-axis-label"
+            style={{ top: `${item.position}%` }}
+          >
+            {item.label}
+          </span>
+        ))}
+      </div>
+      <div className="bar-chart-bars">
+        {values.map((item) => (
+          <div key={item.label} className="bar-item">
+            <div
+              className="bar-fill"
+              style={{ height: `${(item.value / max) * 100}%` }}
+            />
+            <span>{item.label}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -299,13 +365,68 @@ export function CandlestickChart({
   const paddingY = 8;
   const plotWidth = 100 - paddingX * 2;
   const plotHeight = 100 - paddingY * 2;
-  const candleWidth = Math.max(1, plotWidth / candles.length - 0.4);
+  const valuePadding = range === 0 ? Math.max(1, Math.abs(max) * 0.1) : range * 0.08;
+  const chartMax = max + valuePadding;
+  const chartMin = min - valuePadding;
+  const chartRange = chartMax - chartMin || 1;
+  const candleWidth = Math.min(6, Math.max(1, plotWidth / candles.length - 0.6));
+  const majorYCount = 5;
+  const majorXCount = 5;
+  const minorPerMajor = 1;
+  const majorYTicks = Array.from({ length: majorYCount }, (_, index) =>
+    paddingY + (plotHeight * index) / (majorYCount - 1),
+  );
+  const majorXTicks = Array.from({ length: majorXCount }, (_, index) =>
+    paddingX + (plotWidth * index) / (majorXCount - 1),
+  );
+  const minorYTicks = majorYTicks.flatMap((start, index) => {
+    const next = majorYTicks[index + 1];
+    if (!next) {
+      return [];
+    }
+    return Array.from({ length: minorPerMajor }, (_, step) =>
+      start + ((step + 1) * (next - start)) / (minorPerMajor + 1),
+    );
+  });
+  const minorXTicks = majorXTicks.flatMap((start, index) => {
+    const next = majorXTicks[index + 1];
+    if (!next) {
+      return [];
+    }
+    return Array.from({ length: minorPerMajor }, (_, step) =>
+      start + ((step + 1) * (next - start)) / (minorPerMajor + 1),
+    );
+  });
+
+  const defaultYLabels = majorYTicks.map((tick, index) => {
+    const value = chartMax - (index / (majorYCount - 1)) * chartRange;
+    const label = formatValue ? formatValue(value) : value.toFixed(2);
+    return { label, position: tick };
+  });
+
+  const defaultXLabels = majorXTicks.map((tick, index) => {
+    const candleIndex = Math.round((index / (majorXCount - 1)) * (candles.length - 1));
+    const candle = candles[candleIndex];
+    const label = candle
+      ? formatLabel
+        ? formatLabel(candle.date)
+        : candle.date
+      : `${index + 1}`;
+    return { label, position: tick };
+  });
 
   const formatTooltipValue = (value: number) =>
     formatValue ? formatValue(value) : value.toFixed(2);
 
+  const [hoverState, setHoverState] = useState<{
+    index: number;
+    x: number;
+    y: number;
+    value: number;
+  } | null>(null);
+
   const tooltip = useMemo(() => {
-    if (hoverIndex === null) {
+    if (hoverIndex === null || !hoverState) {
       return null;
     }
     const candle = candles[hoverIndex];
@@ -313,11 +434,10 @@ export function CandlestickChart({
       return null;
     }
     const label = formatLabel ? formatLabel(candle.date) : candle.date;
-    const x =
-      paddingX + (hoverIndex / Math.max(candles.length - 1, 1)) * plotWidth;
-    const y = paddingY + (1 - (candle.close - min) / range) * plotHeight;
+    const x = hoverState.x;
+    const y = hoverState.y;
     return { candle, label, x, y };
-  }, [candles, formatLabel, hoverIndex, min, paddingX, paddingY, plotHeight, plotWidth, range]);
+  }, [candles, formatLabel, hoverIndex, hoverState]);
 
   return (
     <div className="line-chart">
@@ -325,22 +445,79 @@ export function CandlestickChart({
         viewBox="0 0 100 100"
         className="chart-svg"
         preserveAspectRatio="none"
-        onMouseLeave={() => setHoverIndex(null)}
+        onMouseLeave={() => {
+          setHoverIndex(null);
+          setHoverState(null);
+        }}
         onMouseMove={(event) => {
           const rect = event.currentTarget.getBoundingClientRect();
-          const relativeX = event.clientX - rect.left - (paddingX / 100) * rect.width;
-          const ratio = Math.min(1, Math.max(0, relativeX / rect.width));
+          const relativeX = event.clientX - rect.left;
+          const relativeY = event.clientY - rect.top;
+          const viewX = (relativeX / rect.width) * 100;
+          const viewY = (relativeY / rect.height) * 100;
+          const clampedX = Math.min(100 - paddingX, Math.max(paddingX, viewX));
+          const clampedY = Math.min(100 - paddingY, Math.max(paddingY, viewY));
+          const ratio = (clampedX - paddingX) / plotWidth;
           const index = Math.round(ratio * (candles.length - 1));
+          const value =
+            chartMax - ((clampedY - paddingY) / plotHeight) * chartRange;
           setHoverIndex(index);
+          setHoverState({ index, x: clampedX, y: clampedY, value });
         }}
       >
+        <g className="chart-grid">
+          {majorYTicks.map((tick, index) => (
+            <line
+              key={`y-major-${index}`}
+              className="chart-grid-major"
+              x1={paddingX}
+              y1={tick}
+              x2={100 - paddingX}
+              y2={tick}
+            />
+          ))}
+          {minorYTicks.map((tick, index) => (
+            <line
+              key={`y-minor-${index}`}
+              className="chart-grid-minor"
+              x1={paddingX}
+              y1={tick}
+              x2={100 - paddingX}
+              y2={tick}
+            />
+          ))}
+          {majorXTicks.map((tick, index) => (
+            <line
+              key={`x-major-${index}`}
+              className="chart-grid-major"
+              x1={tick}
+              y1={paddingY}
+              x2={tick}
+              y2={100 - paddingY}
+            />
+          ))}
+          {minorXTicks.map((tick, index) => (
+            <line
+              key={`x-minor-${index}`}
+              className="chart-grid-minor"
+              x1={tick}
+              y1={paddingY}
+              x2={tick}
+              y2={100 - paddingY}
+            />
+          ))}
+        </g>
         {candles.map((candle, index) => {
           const x =
             paddingX + (index / Math.max(candles.length - 1, 1)) * plotWidth;
-          const openY = paddingY + (1 - (candle.open - min) / range) * plotHeight;
-          const closeY = paddingY + (1 - (candle.close - min) / range) * plotHeight;
-          const highY = paddingY + (1 - (candle.high - min) / range) * plotHeight;
-          const lowY = paddingY + (1 - (candle.low - min) / range) * plotHeight;
+          const openY =
+            paddingY + (1 - (candle.open - chartMin) / chartRange) * plotHeight;
+          const closeY =
+            paddingY + (1 - (candle.close - chartMin) / chartRange) * plotHeight;
+          const highY =
+            paddingY + (1 - (candle.high - chartMin) / chartRange) * plotHeight;
+          const lowY =
+            paddingY + (1 - (candle.low - chartMin) / chartRange) * plotHeight;
           const isUp = candle.close >= candle.open;
           const bodyTop = isUp ? closeY : openY;
           const bodyBottom = isUp ? openY : closeY;
@@ -363,6 +540,46 @@ export function CandlestickChart({
             </g>
           );
         })}
+        {hoverState ? (
+          <g className="chart-crosshair-group">
+            <line
+              className="chart-crosshair"
+              x1={hoverState.x}
+              y1={paddingY}
+              x2={hoverState.x}
+              y2={100 - paddingY}
+            />
+            <line
+              className="chart-crosshair chart-crosshair-horizontal"
+              x1={paddingX}
+              y1={hoverState.y}
+              x2={100 - paddingX}
+              y2={hoverState.y}
+            />
+          </g>
+        ) : null}
+        {defaultYLabels.map((item, index) => (
+          <text
+            key={`y-${item.label}-${index}`}
+            x="2"
+            y={item.position}
+            className="chart-axis-text"
+            textAnchor="start"
+          >
+            {item.label}
+          </text>
+        ))}
+        {defaultXLabels.map((item, index) => (
+          <text
+            key={`x-${item.label}-${index}`}
+            x={item.position}
+            y="98"
+            className="chart-axis-text"
+            textAnchor="middle"
+          >
+            {item.label}
+          </text>
+        ))}
       </svg>
       {tooltip ? (
         <div

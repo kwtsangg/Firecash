@@ -6,6 +6,7 @@ import KpiCard from "../components/KpiCard";
 import Modal from "../components/Modal";
 
 export default function DashboardPage() {
+  const accountOptions = ["Primary Account", "Retirement", "Side Hustle"];
   const [range, setRange] = useState<DateRange>({
     from: "2024-01-01",
     to: "2024-12-31",
@@ -13,6 +14,11 @@ export default function DashboardPage() {
   const [toast, setToast] = useState<ActionToastData | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
   const [isTransactionOpen, setIsTransactionOpen] = useState(false);
+  const [transactionAccount, setTransactionAccount] = useState(accountOptions[0]);
+  const [transactionType, setTransactionType] = useState("Income");
+  const [transactionAmount, setTransactionAmount] = useState("");
+  const [transactionDate, setTransactionDate] = useState("2024-04-20");
+  const [transactionNotes, setTransactionNotes] = useState("");
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
@@ -118,19 +124,55 @@ export default function DashboardPage() {
         <div className="form-grid">
           <label>
             Account
-            <input type="text" placeholder="Primary Account" />
+            <select
+              value={transactionAccount}
+              onChange={(event) => setTransactionAccount(event.target.value)}
+            >
+              {accountOptions.map((account) => (
+                <option key={account} value={account}>
+                  {account}
+                </option>
+              ))}
+            </select>
           </label>
           <label>
             Type
-            <input type="text" placeholder="Income or Expense" />
+            <select
+              value={transactionType}
+              onChange={(event) => setTransactionType(event.target.value)}
+            >
+              {["Income", "Expense"].map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
           </label>
           <label>
             Amount
-            <input type="number" placeholder="0.00" />
+            <input
+              type="number"
+              placeholder="0.00"
+              value={transactionAmount}
+              onChange={(event) => setTransactionAmount(event.target.value)}
+            />
+          </label>
+          <label>
+            Date
+            <input
+              type="date"
+              value={transactionDate}
+              onChange={(event) => setTransactionDate(event.target.value)}
+            />
           </label>
           <label>
             Notes
-            <input type="text" placeholder="Salary, rent, dividends..." />
+            <input
+              type="text"
+              placeholder="Salary, rent, dividends..."
+              value={transactionNotes}
+              onChange={(event) => setTransactionNotes(event.target.value)}
+            />
           </label>
         </div>
       </Modal>

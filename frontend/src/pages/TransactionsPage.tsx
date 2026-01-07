@@ -14,6 +14,7 @@ import {
   toDateInputValue,
   toIsoDateTime,
 } from "../utils/date";
+import { pageTitles } from "../utils/pageTitles";
 
 type Account = {
   id: string;
@@ -324,7 +325,7 @@ export default function TransactionsPage() {
     <section className="page">
       <header className="page-header">
         <div>
-          <h1>Transactions</h1>
+          <h1>{pageTitles.transactions}</h1>
           <p className="muted">Review income and expenses across accounts.</p>
         </div>
         <div className="toolbar">

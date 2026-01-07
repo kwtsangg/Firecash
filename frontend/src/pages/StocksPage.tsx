@@ -16,6 +16,7 @@ import {
   storeStrategies,
 } from "../utils/strategies";
 import { supportedCurrencies } from "../utils/currency";
+import { pageTitles } from "../utils/pageTitles";
 
 type Account = {
   id: string;
@@ -579,7 +580,7 @@ export default function StocksPage() {
     <section className="page">
       <header className="page-header">
         <div>
-          <h1>Stocks</h1>
+          <h1>{pageTitles.stocks}</h1>
           <p className="muted">Track holdings, dividends, and live price momentum.</p>
           <p className="muted">Price source: Stooq.</p>
         </div>

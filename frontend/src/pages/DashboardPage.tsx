@@ -16,6 +16,7 @@ import {
   toDateInputValue,
   toIsoDateTime,
 } from "../utils/date";
+import { pageTitles } from "../utils/pageTitles";
 
 type Account = {
   id: string;
@@ -433,7 +434,7 @@ export default function DashboardPage() {
     <section className="page">
       <header className="page-header">
         <div>
-          <h1>Dashboard</h1>
+          <h1>{pageTitles.dashboard}</h1>
           <p className="muted">
             Overview of your asset growth and daily performance.
           </p>

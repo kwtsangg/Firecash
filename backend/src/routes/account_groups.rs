@@ -46,6 +46,32 @@ pub async fn list_account_groups(
     Ok(Json(records))
 }
 
+#[derive(serde::Serialize)]
+pub struct AccountGroupMembership {
+    pub group_id: Uuid,
+    pub account_id: Uuid,
+}
+
+pub async fn list_account_group_memberships(
+    State(state): State<AppState>,
+    user: AuthenticatedUser,
+) -> Result<Json<Vec<AccountGroupMembership>>, (axum::http::StatusCode, String)> {
+    let records = sqlx::query_as::<_, AccountGroupMembership>(
+        r#"
+        SELECT agm.group_id, agm.account_id
+        FROM account_group_members agm
+        INNER JOIN account_groups ag ON agm.group_id = ag.id
+        WHERE ag.user_id = $1
+        "#,
+    )
+    .bind(user.id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(crate::auth::internal_error)?;
+
+    Ok(Json(records))
+}
+
 pub async fn create_account_group(
     State(state): State<AppState>,
     user: AuthenticatedUser,

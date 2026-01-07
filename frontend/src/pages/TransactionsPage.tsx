@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import EmptyState from "../components/EmptyState";
@@ -6,8 +6,12 @@ import LoadingSkeleton from "../components/LoadingSkeleton";
 import Modal from "../components/Modal";
 import { useCurrency } from "../components/CurrencyContext";
 import { useSelection } from "../components/SelectionContext";
+import {
+  fetchAccountGroupMemberships,
+  fetchAccountGroups,
+} from "../api/accountGroups";
+import { fetchPreferences } from "../api/preferences";
 import { del, get, post, put } from "../utils/apiClient";
-import { readCategories } from "../utils/categories";
 import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
 import {
   formatDateDisplay,
@@ -21,6 +25,16 @@ import { pageTitles } from "../utils/pageTitles";
 type Account = {
   id: string;
   name: string;
+};
+
+type AccountGroup = {
+  id: string;
+  name: string;
+};
+
+type AccountGroupMembership = {
+  account_id: string;
+  group_id: string;
 };
 
 type Transaction = {
@@ -68,10 +82,12 @@ export default function TransactionsPage() {
   const [transactionDate, setTransactionDate] = useState(() => toDateInputValue(new Date()));
   const [transactionCurrency, setTransactionCurrency] = useState("USD");
   const [transactionCategory, setTransactionCategory] = useState("General");
-  const [categories, setCategories] = useState<string[]>(() => readCategories());
+  const [categories, setCategories] = useState<string[]>([]);
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [groups, setGroups] = useState<AccountGroup[]>([]);
+  const [memberships, setMemberships] = useState<AccountGroupMembership[]>([]);
   const [selectedTransactions, setSelectedTransactions] = useState<Set<string>>(new Set());
   const [pendingEdits, setPendingEdits] = useState<Record<string, Partial<TransactionRow>>>({});
   const [isEditMode, setIsEditMode] = useState(false);
@@ -79,15 +95,25 @@ export default function TransactionsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isFiltering, setIsFiltering] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isPreferencesLoading, setIsPreferencesLoading] = useState(true);
+  const [preferencesError, setPreferencesError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadData = useCallback(async () => {
     let isMounted = true;
-    const loadData = async () => {
+    const run = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        const [accountsResponse, transactionsResponse, recurringResponse] = await Promise.all([
+        const [
+          accountsResponse,
+          groupsResponse,
+          membershipResponse,
+          transactionsResponse,
+          recurringResponse,
+        ] = await Promise.all([
           get<Account[]>("/api/accounts"),
+          fetchAccountGroups(),
+          fetchAccountGroupMemberships(),
           get<Transaction[]>("/api/transactions"),
           get<RecurringTransaction[]>("/api/recurring-transactions"),
         ]);
@@ -96,6 +122,8 @@ export default function TransactionsPage() {
         }
         const accountMap = new Map(accountsResponse.map((item) => [item.id, item.name]));
         setAccounts(accountsResponse);
+        setGroups(groupsResponse);
+        setMemberships(membershipResponse);
         setRecurringTransactions(recurringResponse);
         setTransactionAccount(accountsResponse[0]?.id ?? "");
         setTransactions(
@@ -121,11 +149,41 @@ export default function TransactionsPage() {
         }
       }
     };
-    loadData();
+    await run();
     return () => {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    loadData().then((result) => {
+      cleanup = result;
+    });
+    return () => {
+      cleanup?.();
+    };
+  }, [loadData]);
+
+  const loadPreferences = useCallback(async () => {
+    setIsPreferencesLoading(true);
+    setPreferencesError(null);
+    try {
+      const response = await fetchPreferences();
+      setCategories(response.categories);
+      setTransactionCategory((prev) =>
+        response.categories.includes(prev) ? prev : response.categories[0] ?? "General",
+      );
+    } catch (err) {
+      setPreferencesError("Unable to load categories right now.");
+    } finally {
+      setIsPreferencesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPreferences();
+  }, [loadPreferences]);
 
   const accountOptions = useMemo(
     () => accounts.map((account) => ({ id: account.id, name: account.name })),
@@ -133,17 +191,25 @@ export default function TransactionsPage() {
   );
 
   const accountGroups: Record<string, string> = useMemo(() => {
-    return accountOptions.reduce<Record<string, string>>((acc, accountName) => {
-      acc[accountName.name] = "Ungrouped";
+    const groupNameById = new Map(groups.map((group) => [group.id, group.name]));
+    const accountGroupById = memberships.reduce<Record<string, string>>((acc, membership) => {
+      const groupName = groupNameById.get(membership.group_id);
+      if (groupName) {
+        acc[membership.account_id] = groupName;
+      }
       return acc;
     }, {});
-  }, [accountOptions]);
+    return accounts.reduce<Record<string, string>>((acc, account) => {
+      acc[account.name] = accountGroupById[account.id] ?? "Ungrouped";
+      return acc;
+    }, {});
+  }, [accounts, groups, memberships]);
 
   useEffect(() => {
     if (isTransactionOpen) {
-      setCategories(readCategories());
+      loadPreferences();
     }
-  }, [isTransactionOpen]);
+  }, [isTransactionOpen, loadPreferences]);
 
   useEffect(() => {
     if (isLoading) {
@@ -218,6 +284,26 @@ export default function TransactionsPage() {
       showToast("No changes", "There are no edits to apply.");
       return;
     }
+    const previousRows = transactions;
+    const previousEdits = pendingEdits;
+    const previousSelection = selectedTransactions;
+    const updatedRows = transactions
+      .map((row) => {
+        const updates = pendingEdits[row.id];
+        if (!updates) {
+          return row;
+        }
+        return {
+          ...row,
+          ...updates,
+          account: updates.account ?? row.account,
+        };
+      })
+      .filter((row) => !selectedTransactions.has(row.id));
+    setTransactions(updatedRows);
+    setPendingEdits({});
+    setSelectedTransactions(new Set());
+    setIsReviewOpen(false);
     try {
       if (pendingEditsList.length > 0) {
         await Promise.all(
@@ -243,35 +329,19 @@ export default function TransactionsPage() {
             }
           }),
         );
-        setTransactions((prev) =>
-          prev.map((row) => {
-            const updates = pendingEdits[row.id];
-            if (!updates) {
-              return row;
-            }
-            return {
-              ...row,
-              ...updates,
-              account: updates.account ?? row.account,
-            };
-          }),
-        );
-        setPendingEdits({});
       }
       if (selectedTransactions.size > 0) {
         await Promise.all(
           Array.from(selectedTransactions).map((id) => del(`/api/transactions/${id}`)),
         );
-        setTransactions((prev) =>
-          prev.filter((row) => !selectedTransactions.has(row.id)),
-        );
-        setSelectedTransactions(new Set());
       }
       showToast("Changes applied", "Your updates have been saved.");
     } catch (err) {
+      setTransactions(previousRows);
+      setPendingEdits(previousEdits);
+      setSelectedTransactions(previousSelection);
+      setIsReviewOpen(true);
       showToast("Update failed", "Unable to apply the requested changes.");
-    } finally {
-      setIsReviewOpen(false);
     }
   };
 
@@ -286,6 +356,21 @@ export default function TransactionsPage() {
       return;
     }
     const accountName = accounts.find((account) => account.id === transactionAccount)?.name ?? "Unknown";
+    const tempId = `temp-${Date.now()}`;
+    const optimisticRow: TransactionRow = {
+      id: tempId,
+      accountId: transactionAccount,
+      date: transactionDate,
+      account: accountName,
+      type: transactionType,
+      category: transactionCategory,
+      amount,
+      currency: transactionCurrency,
+      status: "Pending",
+    };
+    setTransactions((prev) => [optimisticRow, ...prev]);
+    setIsTransactionOpen(false);
+    setTransactionAmount("");
     try {
       const created = await post<Transaction>("/api/transactions", {
         account_id: transactionAccount,
@@ -295,24 +380,26 @@ export default function TransactionsPage() {
         description: null,
         occurred_at: toIsoDateTime(transactionDate),
       });
-      setTransactions((prev) => [
-        {
-          id: created.id,
-          accountId: created.account_id,
-          date: created.occurred_at.split("T")[0],
-          account: accountName,
-          type: created.transaction_type === "income" ? "Income" : "Expense",
-          category: transactionCategory,
-          amount: created.amount,
-          currency: created.currency_code,
-          status: "Cleared",
-        },
-        ...prev,
-      ]);
-      setIsTransactionOpen(false);
-      setTransactionAmount("");
+      setTransactions((prev) =>
+        prev.map((row) =>
+          row.id === tempId
+            ? {
+                id: created.id,
+                accountId: created.account_id,
+                date: created.occurred_at.split("T")[0],
+                account: accountName,
+                type: created.transaction_type === "income" ? "Income" : "Expense",
+                category: transactionCategory,
+                amount: created.amount,
+                currency: created.currency_code,
+                status: "Cleared",
+              }
+            : row,
+        ),
+      );
       showToast("Transaction saved", "Your entry has been recorded.");
     } catch (err) {
+      setTransactions((prev) => prev.filter((row) => row.id !== tempId));
       showToast("Save failed", "Unable to save this transaction.");
     }
   };
@@ -328,7 +415,12 @@ export default function TransactionsPage() {
   if (error) {
     return (
       <section className="page">
-        <div className="card page-state error">{error}</div>
+        <div className="card page-state error">
+          <p>{error}</p>
+          <button className="pill" type="button" onClick={loadData}>
+            Retry
+          </button>
+        </div>
       </section>
     );
   }
@@ -430,13 +522,26 @@ export default function TransactionsPage() {
             <select
               value={transactionCategory}
               onChange={(event) => setTransactionCategory(event.target.value)}
+              disabled={isPreferencesLoading}
             >
-              {categories.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
+              {isPreferencesLoading ? (
+                <option value="">Loading categories…</option>
+              ) : (
+                categories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))
+              )}
             </select>
+            {preferencesError ? (
+              <div className="input-helper">
+                {preferencesError}{" "}
+                <button className="pill" type="button" onClick={loadPreferences}>
+                  Retry
+                </button>
+              </div>
+            ) : null}
           </label>
           <label>
             Occurred on

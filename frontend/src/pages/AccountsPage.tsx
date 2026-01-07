@@ -1,11 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
 import EmptyState from "../components/EmptyState";
 import LoadingSkeleton from "../components/LoadingSkeleton";
 import Modal from "../components/Modal";
 import { useSelection } from "../components/SelectionContext";
 import Breadcrumbs from "../layouts/Breadcrumbs";
+import {
+  AccountGroupMembership,
+  fetchAccountGroupMemberships,
+  fetchAccountGroups,
+  updateAccountGroup,
+} from "../api/accountGroups";
 import { get, post } from "../utils/apiClient";
+import { getFriendlyErrorMessage } from "../utils/errorMessages";
 import { pageTitles } from "../utils/pageTitles";
 
 type Account = {
@@ -32,25 +39,29 @@ export default function AccountsPage() {
   const [membershipAccount, setMembershipAccount] = useState("");
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [groups, setGroups] = useState<AccountGroup[]>([]);
+  const [memberships, setMemberships] = useState<AccountGroupMembership[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isFiltering, setIsFiltering] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isMembershipSaving, setIsMembershipSaving] = useState(false);
 
-  useEffect(() => {
+  const loadData = useCallback(async () => {
     let isMounted = true;
-    const loadData = async () => {
+    const run = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        const [accountsResponse, groupsResponse] = await Promise.all([
+        const [accountsResponse, groupsResponse, membershipResponse] = await Promise.all([
           get<Account[]>("/api/accounts"),
-          get<AccountGroup[]>("/api/account-groups"),
+          fetchAccountGroups(),
+          fetchAccountGroupMemberships(),
         ]);
         if (!isMounted) {
           return;
         }
         setAccounts(accountsResponse);
         setGroups(groupsResponse);
+        setMemberships(membershipResponse);
         setMembershipAccount(accountsResponse[0]?.name ?? "");
         setMembershipGroup(groupsResponse[0]?.name ?? "Ungrouped");
       } catch (err) {
@@ -63,11 +74,21 @@ export default function AccountsPage() {
         }
       }
     };
-    loadData();
+    await run();
     return () => {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    loadData().then((result) => {
+      cleanup = result;
+    });
+    return () => {
+      cleanup?.();
+    };
+  }, [loadData]);
 
   useEffect(() => {
     if (isLoading) {
@@ -82,21 +103,97 @@ export default function AccountsPage() {
     setToast({ title, description });
   };
 
+  const accountIdByName = useMemo(
+    () => new Map(accounts.map((account) => [account.name, account.id])),
+    [accounts],
+  );
+  const groupIdByName = useMemo(
+    () => new Map(groups.map((group) => [group.name, group.id])),
+    [groups],
+  );
+
+  const membershipsByGroup = useMemo(() => {
+    return memberships.reduce<Record<string, Set<string>>>((acc, membership) => {
+      if (!acc[membership.group_id]) {
+        acc[membership.group_id] = new Set();
+      }
+      acc[membership.group_id].add(membership.account_id);
+      return acc;
+    }, {});
+  }, [memberships]);
+
+  const applyMembershipUpdate = async () => {
+    if (!membershipAccount) {
+      showToast("Missing account", "Choose an account to update.");
+      return;
+    }
+    const accountId = accountIdByName.get(membershipAccount);
+    if (!accountId) {
+      showToast("Account not found", "Select a valid account.");
+      return;
+    }
+    setIsMembershipSaving(true);
+    const previousMemberships = memberships;
+    try {
+      const targetGroupId =
+        membershipGroup === "Ungrouped" ? null : groupIdByName.get(membershipGroup) ?? null;
+      if (membershipGroup !== "Ungrouped" && !targetGroupId) {
+        showToast("Group not found", "Select a valid group.");
+        return;
+      }
+      const nextMemberships: AccountGroupMembership[] = [];
+      await Promise.all(
+        groups.map((group) => {
+          const currentIds = Array.from(membershipsByGroup[group.id] ?? []);
+          const baseIds = currentIds.filter((id) => id !== accountId);
+          const nextIds =
+            targetGroupId && group.id === targetGroupId
+              ? [...baseIds, accountId]
+              : baseIds;
+          nextIds.forEach((id) =>
+            nextMemberships.push({ account_id: id, group_id: group.id }),
+          );
+          return updateAccountGroup(group.id, nextIds);
+        }),
+      );
+      setMemberships(nextMemberships);
+      showToast(
+        "Membership updated",
+        targetGroupId
+          ? `${membershipAccount} added to ${membershipGroup}.`
+          : `${membershipAccount} is now ungrouped.`,
+      );
+      setIsMembershipOpen(false);
+    } catch (err) {
+      setMemberships(previousMemberships);
+      showToast("Update failed", getFriendlyErrorMessage(err, "Unable to update membership."));
+    } finally {
+      setIsMembershipSaving(false);
+    }
+  };
+
   const handleCreateGroup = async () => {
     if (!groupName.trim()) {
       showToast("Missing name", "Enter a group name to save.");
       return;
     }
+    const trimmed = groupName.trim();
+    const tempId = `temp-${Date.now()}`;
+    const optimisticGroup: AccountGroup = { id: tempId, name: trimmed };
+    setGroups((prev) => [optimisticGroup, ...prev]);
+    setIsGroupOpen(false);
+    setGroupName("");
     try {
       const created = await post<AccountGroup>("/api/account-groups", {
-        name: groupName.trim(),
+        name: trimmed,
         account_ids: [],
       });
-      setGroups((prev) => [created, ...prev]);
-      setIsGroupOpen(false);
+      setGroups((prev) =>
+        prev.map((group) => (group.id === tempId ? created : group)),
+      );
       showToast("Group created", `Created ${created.name}.`);
-      setGroupName("");
     } catch (err) {
+      setGroups((prev) => prev.filter((group) => group.id !== tempId));
       showToast("Save failed", "Unable to create this group.");
     }
   };
@@ -106,31 +203,48 @@ export default function AccountsPage() {
       showToast("Missing name", "Enter an account name to save.");
       return;
     }
+    const trimmed = accountName.trim();
+    const tempId = `temp-${Date.now()}`;
+    const optimisticAccount: Account = {
+      id: tempId,
+      name: trimmed,
+      currency_code: accountCurrency,
+    };
+    setAccounts((prev) => [optimisticAccount, ...prev]);
+    setIsAccountOpen(false);
+    setAccountName("");
     try {
       const created = await post<Account>("/api/accounts", {
-        name: accountName.trim(),
+        name: trimmed,
         currency_code: accountCurrency,
       });
-      setAccounts((prev) => [created, ...prev]);
-      setIsAccountOpen(false);
+      setAccounts((prev) =>
+        prev.map((account) => (account.id === tempId ? created : account)),
+      );
       setMembershipAccount(created.name);
       showToast("Account saved", `Added ${created.name}.`);
-      setAccountName("");
     } catch (err) {
+      setAccounts((prev) => prev.filter((account) => account.id !== tempId));
       showToast("Save failed", "Unable to create this account.");
     }
   };
 
-  const accountRows = useMemo(
-    () =>
-      accounts.map((row) => ({
-        name: row.name,
-        currency: row.currency_code,
-        status: "Active",
-        group: "Ungrouped",
-      })),
-    [accounts],
-  );
+  const accountRows = useMemo(() => {
+    const groupNameById = new Map(groups.map((group) => [group.id, group.name]));
+    const accountGroupById = memberships.reduce<Record<string, string>>((acc, membership) => {
+      const groupName = groupNameById.get(membership.group_id);
+      if (groupName) {
+        acc[membership.account_id] = groupName;
+      }
+      return acc;
+    }, {});
+    return accounts.map((row) => ({
+      name: row.name,
+      currency: row.currency_code,
+      status: "Active",
+      group: accountGroupById[row.id] ?? "Ungrouped",
+    }));
+  }, [accounts, groups, memberships]);
 
   const filteredAccounts = accountRows.filter((row) => {
     const matchesAccount = selectedAccount === "All Accounts" || row.name === selectedAccount;
@@ -175,7 +289,12 @@ export default function AccountsPage() {
   if (error) {
     return (
       <section className="page">
-        <div className="card page-state error">{error}</div>
+        <div className="card page-state error">
+          <p>{error}</p>
+          <button className="pill" type="button" onClick={loadData}>
+            Retry
+          </button>
+        </div>
       </section>
     );
   }
@@ -293,17 +412,10 @@ export default function AccountsPage() {
             <button
               className="pill primary"
               type="button"
-              onClick={() => {
-                setIsMembershipOpen(false);
-                showToast(
-                  "Membership updated",
-                  membershipAccount && membershipGroup
-                    ? `${membershipAccount} added to ${membershipGroup}.`
-                    : "Membership updated.",
-                );
-              }}
+              onClick={applyMembershipUpdate}
+              disabled={isMembershipSaving}
             >
-              Save Membership
+              {isMembershipSaving ? "Saving..." : "Save Membership"}
             </button>
           </>
         }

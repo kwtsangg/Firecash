@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
 import { BarChart, DonutChart, LineChart } from "../components/Charts";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
@@ -8,8 +8,12 @@ import LoadingSkeleton from "../components/LoadingSkeleton";
 import Modal from "../components/Modal";
 import { useCurrency } from "../components/CurrencyContext";
 import { useSelection } from "../components/SelectionContext";
+import {
+  fetchAccountGroupMemberships,
+  fetchAccountGroups,
+} from "../api/accountGroups";
+import { fetchPreferences } from "../api/preferences";
 import { get, post } from "../utils/apiClient";
-import { readCategories } from "../utils/categories";
 import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
 import {
   formatDateDisplay,
@@ -24,6 +28,16 @@ type Account = {
   id: string;
   name: string;
   currency_code: string;
+};
+
+type AccountGroup = {
+  id: string;
+  name: string;
+};
+
+type AccountGroupMembership = {
+  account_id: string;
+  group_id: string;
 };
 
 type Asset = {
@@ -76,6 +90,7 @@ type AssetDisplay = {
 };
 
 type TransactionDisplay = {
+  id: string;
   account: string;
   type: string;
   category: string;
@@ -101,12 +116,14 @@ export default function DashboardPage() {
   const [transactionDate, setTransactionDate] = useState(() => toDateInputValue(new Date()));
   const [transactionNotes, setTransactionNotes] = useState("");
   const [transactionCurrency, setTransactionCurrency] = useState("USD");
-  const [categories, setCategories] = useState(() => readCategories());
-  const [transactionCategory, setTransactionCategory] = useState(() => categories[0] ?? "General");
+  const [categories, setCategories] = useState<string[]>([]);
+  const [transactionCategory, setTransactionCategory] = useState("General");
   const [budgetCategory, setBudgetCategory] = useState("Housing");
   const [budgetAmount, setBudgetAmount] = useState("");
   const [budgetStart, setBudgetStart] = useState(() => toDateInputValue(startOfMonth(new Date())));
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [groups, setGroups] = useState<AccountGroup[]>([]);
+  const [memberships, setMemberships] = useState<AccountGroupMembership[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [transactions, setTransactions] = useState<TransactionDisplay[]>([]);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
@@ -116,17 +133,21 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isFiltering, setIsFiltering] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isPreferencesLoading, setIsPreferencesLoading] = useState(true);
+  const [preferencesError, setPreferencesError] = useState<string | null>(null);
 
   const budgetCategories = ["Housing", "Investing", "Lifestyle", "Bills"];
 
-  useEffect(() => {
+  const loadData = useCallback(async () => {
     let isMounted = true;
-    const loadData = async () => {
+    const run = async () => {
       setIsLoading(true);
       setError(null);
       try {
         const [
           accountsResponse,
+          groupsResponse,
+          membershipResponse,
           assetsResponse,
           transactionsResponse,
           historyResponse,
@@ -135,6 +156,8 @@ export default function DashboardPage() {
           fxRatesResponse,
         ] = await Promise.all([
           get<Account[]>("/api/accounts"),
+          fetchAccountGroups(),
+          fetchAccountGroupMemberships(),
           get<Asset[]>("/api/assets"),
           get<Transaction[]>("/api/transactions"),
           get<HistoryPoint[]>("/api/history"),
@@ -147,6 +170,7 @@ export default function DashboardPage() {
         }
         const accountMap = new Map(accountsResponse.map((item) => [item.id, item.name]));
         const mappedTransactions = transactionsResponse.map((item) => ({
+          id: item.id,
           account: accountMap.get(item.account_id) ?? "Unknown",
           type: item.transaction_type === "income" ? "Income" : "Expense",
           amount: item.amount,
@@ -157,6 +181,8 @@ export default function DashboardPage() {
         }));
 
         setAccounts(accountsResponse);
+        setGroups(groupsResponse);
+        setMemberships(membershipResponse);
         setAssets(assetsResponse);
         setTransactions(mappedTransactions);
         setHistory(historyResponse);
@@ -174,11 +200,41 @@ export default function DashboardPage() {
         }
       }
     };
-    loadData();
+    await run();
     return () => {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    loadData().then((result) => {
+      cleanup = result;
+    });
+    return () => {
+      cleanup?.();
+    };
+  }, [loadData]);
+
+  const loadPreferences = useCallback(async () => {
+    setIsPreferencesLoading(true);
+    setPreferencesError(null);
+    try {
+      const response = await fetchPreferences();
+      setCategories(response.categories);
+      setTransactionCategory((prev) =>
+        response.categories.includes(prev) ? prev : response.categories[0] ?? "General",
+      );
+    } catch (err) {
+      setPreferencesError("Unable to load categories right now.");
+    } finally {
+      setIsPreferencesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPreferences();
+  }, [loadPreferences]);
 
   useEffect(() => {
     if (!categories.includes(transactionCategory)) {
@@ -188,9 +244,9 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (isTransactionOpen) {
-      setCategories(readCategories());
+      loadPreferences();
     }
-  }, [isTransactionOpen]);
+  }, [isTransactionOpen, loadPreferences]);
 
   useEffect(() => {
     if (isLoading) {
@@ -218,11 +274,19 @@ export default function DashboardPage() {
   );
 
   const accountGroups: Record<string, string> = useMemo(() => {
-    return baseAssets.reduce<Record<string, string>>((acc, asset) => {
-      acc[asset.account] = "Ungrouped";
+    const groupNameById = new Map(groups.map((group) => [group.id, group.name]));
+    const accountGroupById = memberships.reduce<Record<string, string>>((acc, membership) => {
+      const groupName = groupNameById.get(membership.group_id);
+      if (groupName) {
+        acc[membership.account_id] = groupName;
+      }
       return acc;
     }, {});
-  }, [baseAssets]);
+    return accounts.reduce<Record<string, string>>((acc, account) => {
+      acc[account.name] = accountGroupById[account.id] ?? "Ungrouped";
+      return acc;
+    }, {});
+  }, [accounts, groups, memberships]);
 
   const matchesSelection = (account: string) =>
     (selectedAccount === "All Accounts" || selectedAccount === account) &&
@@ -358,6 +422,21 @@ export default function DashboardPage() {
       return;
     }
     const accountName = accounts.find((account) => account.id === transactionAccount)?.name ?? "Unknown";
+    const tempId = `temp-${Date.now()}`;
+    const optimisticTransaction: TransactionDisplay = {
+      id: tempId,
+      account: accountName,
+      type: transactionType,
+      amount,
+      currency: transactionCurrency,
+      date: transactionDate,
+      category: transactionCategory,
+      notes: transactionNotes || "Manual entry",
+    };
+    setTransactions((prev) => [optimisticTransaction, ...prev]);
+    setIsTransactionOpen(false);
+    setTransactionAmount("");
+    setTransactionNotes("");
     try {
       const created = await post<Transaction>("/api/transactions", {
         account_id: transactionAccount,
@@ -367,23 +446,25 @@ export default function DashboardPage() {
         description: transactionNotes || null,
         occurred_at: toIsoDateTime(transactionDate),
       });
-      setTransactions((prev) => [
-        {
-          account: accountName,
-          type: created.transaction_type === "income" ? "Income" : "Expense",
-          amount: created.amount,
-          currency: created.currency_code,
-          date: created.occurred_at.split("T")[0],
-          category: transactionCategory,
-          notes: created.description ?? "Manual entry",
-        },
-        ...prev,
-      ]);
-      setIsTransactionOpen(false);
-      setTransactionAmount("");
-      setTransactionNotes("");
+      setTransactions((prev) =>
+        prev.map((transaction) =>
+          transaction.id === tempId
+            ? {
+                id: created.id,
+                account: accountName,
+                type: created.transaction_type === "income" ? "Income" : "Expense",
+                amount: created.amount,
+                currency: created.currency_code,
+                date: created.occurred_at.split("T")[0],
+                category: transactionCategory,
+                notes: created.description ?? "Manual entry",
+              }
+            : transaction,
+        ),
+      );
       showToast("Transaction saved", "Your entry has been recorded.");
     } catch (err) {
+      setTransactions((prev) => prev.filter((transaction) => transaction.id !== tempId));
       showToast("Save failed", "Unable to save this transaction.");
     }
   };
@@ -422,9 +503,39 @@ export default function DashboardPage() {
       100
     : 0;
   const growthLabel = `${growthValue.toFixed(1)}%`;
-  const assetTrend = totalAssets === 0 ? "0%" : "+4.2%";
-  const netIncomeTrend =
-    filteredTransactions.length === 0 ? "0%" : netIncome >= 0 ? "+12%" : "-6%";
+  const assetTrendValue =
+    lineSeries.length > 1
+      ? ((lineSeries[lineSeries.length - 1].value - lineSeries[0].value) /
+          Math.max(Math.abs(lineSeries[0].value), 1)) *
+        100
+      : 0;
+  const assetTrend = `${assetTrendValue >= 0 ? "+" : ""}${assetTrendValue.toFixed(1)}%`;
+  const midPoint = new Date(
+    (new Date(range.from).getTime() + new Date(range.to).getTime()) / 2,
+  );
+  const incomeByPeriod = filteredTransactions.reduce(
+    (acc, transaction) => {
+      const signedAmount = transaction.type === "Expense" ? -transaction.amount : transaction.amount;
+      const amount = convertAmount(signedAmount, transaction.currency, displayCurrency);
+      const date = new Date(transaction.date);
+      if (date <= midPoint) {
+        acc.previous += amount;
+      } else {
+        acc.current += amount;
+      }
+      return acc;
+    },
+    { current: 0, previous: 0 },
+  );
+  const netIncomeTrendValue =
+    incomeByPeriod.previous === 0
+      ? incomeByPeriod.current === 0
+        ? 0
+        : 100
+      : ((incomeByPeriod.current - incomeByPeriod.previous) /
+          Math.abs(incomeByPeriod.previous)) *
+        100;
+  const netIncomeTrend = `${netIncomeTrendValue >= 0 ? "+" : ""}${netIncomeTrendValue.toFixed(1)}%`;
 
   if (isLoading) {
     return (
@@ -437,7 +548,12 @@ export default function DashboardPage() {
   if (error) {
     return (
       <section className="page">
-        <div className="card page-state error">{error}</div>
+        <div className="card page-state error">
+          <p>{error}</p>
+          <button className="pill" type="button" onClick={loadData}>
+            Retry
+          </button>
+        </div>
       </section>
     );
   }
@@ -546,13 +662,26 @@ export default function DashboardPage() {
             <select
               value={transactionCategory}
               onChange={(event) => setTransactionCategory(event.target.value)}
+              disabled={isPreferencesLoading}
             >
-              {categories.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
+              {isPreferencesLoading ? (
+                <option value="">Loading categories…</option>
+              ) : (
+                categories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))
+              )}
             </select>
+            {preferencesError ? (
+              <div className="input-helper">
+                {preferencesError}{" "}
+                <button className="pill" type="button" onClick={loadPreferences}>
+                  Retry
+                </button>
+              </div>
+            ) : null}
           </label>
           <label>
             Date
@@ -754,7 +883,7 @@ export default function DashboardPage() {
           filteredTransactions.map((transaction) => (
             <div
               className="list-row columns-6"
-              key={`${transaction.date}-${transaction.amount}-${transaction.notes}`}
+              key={transaction.id}
             >
               <span>{formatDateDisplay(transaction.date)}</span>
               <span>{transaction.account}</span>

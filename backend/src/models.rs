@@ -1,5 +1,6 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sqlx::FromRow;
 use uuid::Uuid;
 
@@ -168,6 +169,12 @@ pub struct FxRate {
     pub quote_currency: String,
     pub rate: f64,
     pub recorded_on: NaiveDate,
+}
+
+#[derive(Serialize, FromRow)]
+pub struct UserPreference {
+    pub key: String,
+    pub value: Value,
 }
 
 #[derive(Serialize, FromRow)]

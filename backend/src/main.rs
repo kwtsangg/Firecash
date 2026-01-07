@@ -3,7 +3,7 @@ mod models;
 mod routes;
 mod state;
 
-use axum::{routing::delete, routing::get, routing::post, routing::put, Router};
+use axum::{routing::get, routing::post, routing::put, Router};
 use sqlx::postgres::PgPoolOptions;
 use std::net::SocketAddr;
 use tower_http::cors::{Any, CorsLayer};

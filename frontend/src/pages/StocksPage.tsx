@@ -3,6 +3,7 @@ import ActionToast, { ActionToastData } from "../components/ActionToast";
 import { BarChart, DonutChart, LineChart } from "../components/Charts";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import KpiCard from "../components/KpiCard";
+import Modal from "../components/Modal";
 
 type Holding = {
   ticker: string;
@@ -20,6 +21,7 @@ export default function StocksPage() {
     from: "2024-01-01",
     to: "2024-04-30",
   });
+  const [isHoldingOpen, setIsHoldingOpen] = useState(false);
   const [holdings, setHoldings] = useState<Holding[]>([
     {
       ticker: "AAPL",
@@ -111,7 +113,7 @@ export default function StocksPage() {
           <DateRangePicker value={range} onChange={setRange} />
           <button
             className="pill primary"
-            onClick={() => showToast("Holding added", "Attach a ticker to an account.")}
+            onClick={() => setIsHoldingOpen(true)}
           >
             Add Holding
           </button>
@@ -136,6 +138,48 @@ export default function StocksPage() {
           </button>
         </div>
       </header>
+      <Modal
+        title="Add holding"
+        description="Add a ticker, shares, and cost basis for tracking."
+        isOpen={isHoldingOpen}
+        onClose={() => setIsHoldingOpen(false)}
+        footer={
+          <>
+            <button className="pill" type="button" onClick={() => setIsHoldingOpen(false)}>
+              Cancel
+            </button>
+            <button
+              className="pill primary"
+              type="button"
+              onClick={() => {
+                setIsHoldingOpen(false);
+                showToast("Holding saved", "Your position has been added.");
+              }}
+            >
+              Save Holding
+            </button>
+          </>
+        }
+      >
+        <div className="form-grid">
+          <label>
+            Ticker
+            <input type="text" placeholder="AAPL" />
+          </label>
+          <label>
+            Shares
+            <input type="number" placeholder="0" />
+          </label>
+          <label>
+            Avg entry price
+            <input type="number" placeholder="0.00" />
+          </label>
+          <label>
+            Account
+            <input type="text" placeholder="Primary Account" />
+          </label>
+        </div>
+      </Modal>
       {toast && <ActionToast toast={toast} onDismiss={() => setToast(null)} />}
       <div className="card-grid">
         <KpiCard

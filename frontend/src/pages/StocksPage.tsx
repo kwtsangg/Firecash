@@ -196,24 +196,6 @@ export default function StocksPage() {
   const filteredHoldings = holdings.filter((holding) => matchesSelection(holding.account));
   const filteredTrades = trades.filter((trade) => matchesSelection(trade.account));
   const selectionScale = Math.max(0.4, filteredHoldings.length / holdings.length || 1);
-  const performancePoints = performanceSeries.map((point) =>
-    Math.round(point.value * selectionScale),
-  );
-  const performanceMax =
-    performancePoints.length > 0 ? Math.max(...performancePoints) : 0;
-  const performanceMin =
-    performancePoints.length > 0 ? Math.min(...performancePoints) : 0;
-  const performanceMidpoint = Math.round((performanceMax + performanceMin) / 2);
-  const performanceYLabels = [
-    formatCurrency(performanceMax, displayCurrency),
-    formatCurrency(Math.round(performanceMax * 0.75), displayCurrency),
-    formatCurrency(performanceMidpoint, displayCurrency),
-    formatCurrency(
-      Math.round(performanceMin + (performanceMax - performanceMin) * 0.25),
-      displayCurrency,
-    ),
-    formatCurrency(performanceMin, displayCurrency),
-  ];
   const rangeDays = Math.max(
     1,
     Math.round(
@@ -265,6 +247,41 @@ export default function StocksPage() {
       convertAmount(effectivePrice * holding.shares, holding.currency, displayCurrency)
     );
   }, 0);
+
+  const equitySeries = useMemo(() => {
+    if (performanceSeries.length === 0) {
+      return [];
+    }
+    const netChange = performanceSeries.reduce((sum, point) => sum + point.value, 0);
+    const scaledTotalEquity = totalEquity * selectionScale;
+    const baseline = scaledTotalEquity - netChange;
+    let running = 0;
+    return performanceSeries.map((point) => {
+      running += point.value;
+      return {
+        date: point.date,
+        value: Math.round(baseline + running),
+      };
+    });
+  }, [performanceSeries, selectionScale, totalEquity]);
+
+  const performancePoints = equitySeries.map((point) => point.value);
+  const performanceMax =
+    performancePoints.length > 0 ? Math.max(...performancePoints) : 0;
+  const performanceMin =
+    performancePoints.length > 0 ? Math.min(...performancePoints) : 0;
+  const rangeSpan = performanceMax - performanceMin;
+  const safeSpan = rangeSpan === 0 ? Math.max(1, Math.abs(performanceMax) * 0.1) : rangeSpan;
+  const topValue = rangeSpan === 0 ? performanceMax + safeSpan / 2 : performanceMax;
+  const bottomValue = rangeSpan === 0 ? performanceMin - safeSpan / 2 : performanceMin;
+  const performanceMidpoint = Math.round((topValue + bottomValue) / 2);
+  const performanceYLabels = [
+    formatCurrency(topValue, displayCurrency),
+    formatCurrency(Math.round(topValue - safeSpan * 0.25), displayCurrency),
+    formatCurrency(performanceMidpoint, displayCurrency),
+    formatCurrency(Math.round(bottomValue + safeSpan * 0.25), displayCurrency),
+    formatCurrency(bottomValue, displayCurrency),
+  ];
 
   const dayChange = filteredHoldings.reduce((sum, holding) => {
     if (!holding.price) {

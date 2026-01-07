@@ -3,6 +3,7 @@ import ActionToast, { ActionToastData } from "../components/ActionToast";
 import { BarChart, DonutChart, LineChart } from "../components/Charts";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import KpiCard from "../components/KpiCard";
+import Modal from "../components/Modal";
 
 export default function DashboardPage() {
   const [range, setRange] = useState<DateRange>({
@@ -11,6 +12,7 @@ export default function DashboardPage() {
   });
   const [toast, setToast] = useState<ActionToastData | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
+  const [isTransactionOpen, setIsTransactionOpen] = useState(false);
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
@@ -76,10 +78,7 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="toolbar">
-          <button
-            className="pill primary"
-            onClick={() => showToast("Transaction started", "Pick an account to continue.")}
-          >
+          <button className="pill primary" onClick={() => setIsTransactionOpen(true)}>
             Add Transaction
           </button>
           <button
@@ -93,6 +92,48 @@ export default function DashboardPage() {
           </button>
         </div>
       </header>
+      <Modal
+        title="Add transaction"
+        description="Log income or expenses to keep your net worth accurate."
+        isOpen={isTransactionOpen}
+        onClose={() => setIsTransactionOpen(false)}
+        footer={
+          <>
+            <button className="pill" type="button" onClick={() => setIsTransactionOpen(false)}>
+              Cancel
+            </button>
+            <button
+              className="pill primary"
+              type="button"
+              onClick={() => {
+                setIsTransactionOpen(false);
+                showToast("Transaction saved", "Your entry has been recorded.");
+              }}
+            >
+              Save Transaction
+            </button>
+          </>
+        }
+      >
+        <div className="form-grid">
+          <label>
+            Account
+            <input type="text" placeholder="Primary Account" />
+          </label>
+          <label>
+            Type
+            <input type="text" placeholder="Income or Expense" />
+          </label>
+          <label>
+            Amount
+            <input type="number" placeholder="0.00" />
+          </label>
+          <label>
+            Notes
+            <input type="text" placeholder="Salary, rent, dividends..." />
+          </label>
+        </div>
+      </Modal>
       {toast && <ActionToast toast={toast} onDismiss={() => setToast(null)} />}
       <div className="card-grid">
         <KpiCard

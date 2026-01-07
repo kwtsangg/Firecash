@@ -436,3 +436,43 @@ a {
 .columns-6 {
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 10, 20, 0.65);
+  display: grid;
+  place-items: center;
+  z-index: 1100;
+  backdrop-filter: blur(6px);
+  padding: 24px;
+}
+
+.modal-card {
+  width: min(520px, 92vw);
+  background: rgba(21, 24, 38, 0.98);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 20px;
+  box-shadow: 0 24px 60px rgba(3, 6, 20, 0.6);
+  display: grid;
+  gap: 16px;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
+.modal-body {
+  display: grid;
+  gap: 12px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}

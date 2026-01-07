@@ -1,6 +1,7 @@
 import { useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
+import Modal from "../components/Modal";
 
 export default function TransactionsPage() {
   const [toast, setToast] = useState<ActionToastData | null>(null);
@@ -8,6 +9,7 @@ export default function TransactionsPage() {
     from: "2024-03-01",
     to: "2024-04-30",
   });
+  const [isTransactionOpen, setIsTransactionOpen] = useState(false);
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
@@ -30,12 +32,54 @@ export default function TransactionsPage() {
           </button>
           <button
             className="pill primary"
-            onClick={() => showToast("Transaction created", "Fill in the details below.")}
+            onClick={() => setIsTransactionOpen(true)}
           >
             Add Transaction
           </button>
         </div>
       </header>
+      <Modal
+        title="New transaction"
+        description="Capture scheduled or manual activity for this period."
+        isOpen={isTransactionOpen}
+        onClose={() => setIsTransactionOpen(false)}
+        footer={
+          <>
+            <button className="pill" type="button" onClick={() => setIsTransactionOpen(false)}>
+              Cancel
+            </button>
+            <button
+              className="pill primary"
+              type="button"
+              onClick={() => {
+                setIsTransactionOpen(false);
+                showToast("Transaction saved", "Your entry has been recorded.");
+              }}
+            >
+              Save Transaction
+            </button>
+          </>
+        }
+      >
+        <div className="form-grid">
+          <label>
+            Account
+            <input type="text" placeholder="Primary Account" />
+          </label>
+          <label>
+            Type
+            <input type="text" placeholder="Income or Expense" />
+          </label>
+          <label>
+            Amount
+            <input type="number" placeholder="0.00" />
+          </label>
+          <label>
+            Occurred on
+            <input type="date" />
+          </label>
+        </div>
+      </Modal>
       {toast && <ActionToast toast={toast} onDismiss={() => setToast(null)} />}
       <div className="card">
         <div className="card-header">

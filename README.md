@@ -19,9 +19,9 @@ docker compose up --build
 ```
 
 Services will be available at:
-- API: http://localhost:8080
-- Frontend: http://localhost:5173
-- Postgres: localhost:5432
+- API: http://localhost:8888
+- Frontend: http://localhost:8800
+- Postgres: localhost:8801
 
 ## Local development
 
@@ -69,4 +69,4 @@ Migrations live in `backend/migrations`. The API boots with `sqlx::migrate!()` a
 ## Notes
 
 - The worker is a placeholder scaffold for stock and FX ingestion; hook it up to your preferred data provider.
-- Lockfiles (`backend/Cargo.lock`, `frontend/package-lock.json`) are committed for reproducible builds.
+- The frontend lockfile (`frontend/package-lock.json`) is committed for reproducible installs.

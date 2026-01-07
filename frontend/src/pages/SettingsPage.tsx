@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
 import { useAuth } from "../components/AuthContext";
-import { ApiError, get, post, put } from "../utils/apiClient";
-import { readCategories, storeCategories } from "../utils/categories";
-import { readStrategies, storeStrategies } from "../utils/strategies";
+import { fetchPreferences, updatePreferences } from "../api/preferences";
+import { get, post, put } from "../utils/apiClient";
 import { formatDateDisplay } from "../utils/date";
+import { getFriendlyErrorMessage } from "../utils/errorMessages";
 import { pageTitles } from "../utils/pageTitles";
 
 type UserProfile = {
@@ -28,11 +28,13 @@ export default function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [categories, setCategories] = useState<string[]>(() => readCategories());
+  const [categories, setCategories] = useState<string[]>([]);
   const [categoryName, setCategoryName] = useState("");
-  const [strategies, setStrategies] = useState<string[]>(() => readStrategies());
+  const [strategies, setStrategies] = useState<string[]>([]);
   const [strategyName, setStrategyName] = useState("");
   const [fxRates, setFxRates] = useState<FxRate[]>([]);
+  const [isPreferencesLoading, setIsPreferencesLoading] = useState(true);
+  const [preferencesError, setPreferencesError] = useState<string | null>(null);
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
@@ -65,13 +67,23 @@ export default function SettingsPage() {
     };
   }, []);
 
-  useEffect(() => {
-    storeCategories(categories);
-  }, [categories]);
+  const loadPreferences = async () => {
+    setIsPreferencesLoading(true);
+    setPreferencesError(null);
+    try {
+      const response = await fetchPreferences();
+      setCategories(response.categories);
+      setStrategies(response.strategies);
+    } catch (error) {
+      setPreferencesError("Unable to load preferences right now.");
+    } finally {
+      setIsPreferencesLoading(false);
+    }
+  };
 
   useEffect(() => {
-    storeStrategies(strategies);
-  }, [strategies]);
+    loadPreferences();
+  }, []);
 
   const loadFxRates = async () => {
     try {
@@ -153,9 +165,10 @@ export default function SettingsPage() {
                 setEmail(response.email);
                 showToast("Profile saved", "Updates have been applied.");
               } catch (error) {
-                const message =
-                  error instanceof ApiError ? error.message : "Unable to save profile changes.";
-                showToast("Save failed", message);
+                showToast(
+                  "Save failed",
+                  getFriendlyErrorMessage(error, "Unable to save profile changes."),
+                );
               } finally {
                 setIsSaving(false);
               }
@@ -225,6 +238,14 @@ export default function SettingsPage() {
         <div className="card">
           <h3>Categories</h3>
           <p className="muted">Create and manage transaction categories.</p>
+          {preferencesError ? (
+            <div className="input-helper">
+              {preferencesError}{" "}
+              <button className="pill" type="button" onClick={loadPreferences}>
+                Retry
+              </button>
+            </div>
+          ) : null}
           <div className="category-manager">
             <input
               type="text"
@@ -235,7 +256,8 @@ export default function SettingsPage() {
             <button
               className="pill"
               type="button"
-              onClick={() => {
+              disabled={isPreferencesLoading}
+              onClick={async () => {
                 const trimmed = categoryName.trim();
                 if (!trimmed) {
                   showToast("Missing category", "Enter a category name to save.");
@@ -245,9 +267,20 @@ export default function SettingsPage() {
                   showToast("Category exists", "Choose a new category name.");
                   return;
                 }
-                setCategories((prev) => [...prev, trimmed]);
+                const previous = categories;
+                const next = [...categories, trimmed];
+                setCategories(next);
                 setCategoryName("");
-                showToast("Category added", `${trimmed} is ready to use.`);
+                try {
+                  await updatePreferences({ categories: next });
+                  showToast("Category added", `${trimmed} is ready to use.`);
+                } catch (error) {
+                  setCategories(previous);
+                  showToast(
+                    "Save failed",
+                    getFriendlyErrorMessage(error, "Unable to save this category."),
+                  );
+                }
               }}
             >
               Add Category
@@ -260,9 +293,21 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   className="chip-action"
-                  onClick={() => {
+                  disabled={isPreferencesLoading}
+                  onClick={async () => {
+                    const previous = categories;
                     const updated = categories.filter((item) => item !== category);
-                    setCategories(updated.length ? updated : ["General"]);
+                    const next = updated.length ? updated : ["General"];
+                    setCategories(next);
+                    try {
+                      await updatePreferences({ categories: next });
+                    } catch (error) {
+                      setCategories(previous);
+                      showToast(
+                        "Save failed",
+                        getFriendlyErrorMessage(error, "Unable to update categories."),
+                      );
+                    }
                   }}
                   aria-label={`Remove ${category}`}
                 >
@@ -275,6 +320,14 @@ export default function SettingsPage() {
         <div className="card">
           <h3>Stock strategies</h3>
           <p className="muted">Manage strategy labels for holdings.</p>
+          {preferencesError ? (
+            <div className="input-helper">
+              {preferencesError}{" "}
+              <button className="pill" type="button" onClick={loadPreferences}>
+                Retry
+              </button>
+            </div>
+          ) : null}
           <div className="category-manager">
             <input
               type="text"
@@ -285,7 +338,8 @@ export default function SettingsPage() {
             <button
               className="pill"
               type="button"
-              onClick={() => {
+              disabled={isPreferencesLoading}
+              onClick={async () => {
                 const trimmed = strategyName.trim();
                 if (!trimmed) {
                   showToast("Missing strategy", "Enter a strategy name to save.");
@@ -295,9 +349,20 @@ export default function SettingsPage() {
                   showToast("Strategy exists", "Choose a new strategy name.");
                   return;
                 }
-                setStrategies((prev) => [...prev, trimmed]);
+                const previous = strategies;
+                const next = [...strategies, trimmed];
+                setStrategies(next);
                 setStrategyName("");
-                showToast("Strategy added", `${trimmed} is ready to use.`);
+                try {
+                  await updatePreferences({ strategies: next });
+                  showToast("Strategy added", `${trimmed} is ready to use.`);
+                } catch (error) {
+                  setStrategies(previous);
+                  showToast(
+                    "Save failed",
+                    getFriendlyErrorMessage(error, "Unable to save this strategy."),
+                  );
+                }
               }}
             >
               Add Strategy
@@ -310,9 +375,21 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   className="chip-action"
-                  onClick={() => {
+                  disabled={isPreferencesLoading}
+                  onClick={async () => {
+                    const previous = strategies;
                     const updated = strategies.filter((item) => item !== strategy);
-                    setStrategies(updated.length ? updated : ["Long Term"]);
+                    const next = updated.length ? updated : ["Long Term"];
+                    setStrategies(next);
+                    try {
+                      await updatePreferences({ strategies: next });
+                    } catch (error) {
+                      setStrategies(previous);
+                      showToast(
+                        "Save failed",
+                        getFriendlyErrorMessage(error, "Unable to update strategies."),
+                      );
+                    }
                   }}
                   aria-label={`Remove ${strategy}`}
                 >

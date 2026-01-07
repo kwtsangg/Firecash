@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
 import { BarChart, DonutChart, LineChart } from "../components/Charts";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
@@ -8,21 +8,31 @@ import LoadingSkeleton from "../components/LoadingSkeleton";
 import Modal from "../components/Modal";
 import { useCurrency } from "../components/CurrencyContext";
 import { useSelection } from "../components/SelectionContext";
+import {
+  fetchAccountGroupMemberships,
+  fetchAccountGroups,
+} from "../api/accountGroups";
+import { fetchPreferences, updatePreferences } from "../api/preferences";
 import { del, get, post, put } from "../utils/apiClient";
 import { convertAmount, formatCurrency } from "../utils/currency";
-import { formatDateDisplay, toDateInputValue } from "../utils/date";
-import {
-  readHoldingStrategies,
-  readStrategies,
-  storeHoldingStrategies,
-  storeStrategies,
-} from "../utils/strategies";
+import { formatDateDisplay, getDefaultRange, toDateInputValue } from "../utils/date";
 import { supportedCurrencies } from "../utils/currency";
+import { getFriendlyErrorMessage } from "../utils/errorMessages";
 import { pageTitles } from "../utils/pageTitles";
 
 type Account = {
   id: string;
   name: string;
+};
+
+type AccountGroup = {
+  id: string;
+  name: string;
+};
+
+type AccountGroupMembership = {
+  account_id: string;
+  group_id: string;
 };
 
 type Asset = {
@@ -32,11 +42,20 @@ type Asset = {
   asset_type: string;
   quantity: number;
   currency_code: string;
+  created_at: string;
 };
 
 type HistoryPoint = {
   date: string;
   value: number;
+};
+
+type Transaction = {
+  id: string;
+  amount: number;
+  currency_code: string;
+  transaction_type: string;
+  occurred_at: string;
 };
 
 type AssetPrice = {
@@ -46,13 +65,21 @@ type AssetPrice = {
   recorded_at: string | null;
 };
 
+type Candle = {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+};
+
 type Holding = {
   id: string;
   ticker: string;
   shares: number;
   avgEntry: number | null;
   price: number | null;
-  change: number;
+  change: number | null;
   currency: string;
   assetType: string;
   account: string;
@@ -124,10 +151,7 @@ export default function StocksPage() {
   const { currency: displayCurrency } = useCurrency();
   const { account: selectedAccount, group: selectedGroup } = useSelection();
   const [toast, setToast] = useState<ActionToastData | null>(null);
-  const [range, setRange] = useState<DateRange>({
-    from: "2026-01-01",
-    to: "2026-04-30",
-  });
+  const [range, setRange] = useState<DateRange>(() => getDefaultRange(90));
   const [isHoldingOpen, setIsHoldingOpen] = useState(false);
   const [holdingTicker, setHoldingTicker] = useState("");
   const [holdingShares, setHoldingShares] = useState("");
@@ -136,13 +160,13 @@ export default function StocksPage() {
   const [holdingAccount, setHoldingAccount] = useState("");
   const [holdingStrategy, setHoldingStrategy] = useState("Long Term");
   const [holdings, setHoldings] = useState<Holding[]>([]);
-  const [trades, setTrades] = useState<Trade[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [groups, setGroups] = useState<AccountGroup[]>([]);
+  const [memberships, setMemberships] = useState<AccountGroupMembership[]>([]);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
-  const [strategies, setStrategies] = useState<string[]>(() => readStrategies());
-  const [holdingStrategies, setHoldingStrategies] = useState<Record<string, string>>(
-    () => readHoldingStrategies(),
-  );
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [strategies, setStrategies] = useState<string[]>([]);
+  const [holdingStrategies, setHoldingStrategies] = useState<Record<string, string>>({});
   const [selectedHoldings, setSelectedHoldings] = useState<Set<string>>(new Set());
   const [pendingStrategies, setPendingStrategies] = useState<Record<string, string>>({});
   const [pendingHoldings, setPendingHoldings] = useState<Record<string, HoldingEdit>>({});
@@ -151,22 +175,64 @@ export default function StocksPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isFiltering, setIsFiltering] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isPreferencesLoading, setIsPreferencesLoading] = useState(true);
+  const [preferencesError, setPreferencesError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadData = useCallback(async () => {
     let isMounted = true;
-    const loadData = async () => {
+    const run = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        const [accountsResponse, assetsResponse, historyResponse, pricesResponse] =
-          await Promise.all([
-            get<Account[]>("/api/accounts"),
-            get<Asset[]>("/api/assets"),
-            get<HistoryPoint[]>("/api/history"),
-            get<AssetPrice[]>("/api/assets/prices"),
-          ]);
+        const [
+          accountsResponse,
+          groupsResponse,
+          membershipResponse,
+          assetsResponse,
+          historyResponse,
+          pricesResponse,
+          transactionsResponse,
+        ] = await Promise.all([
+          get<Account[]>("/api/accounts"),
+          fetchAccountGroups(),
+          fetchAccountGroupMemberships(),
+          get<Asset[]>("/api/assets"),
+          get<HistoryPoint[]>("/api/history"),
+          get<AssetPrice[]>("/api/assets/prices"),
+          get<Transaction[]>("/api/transactions"),
+        ]);
         if (!isMounted) {
           return;
+        }
+        const symbols = Array.from(
+          new Set(assetsResponse.map((asset) => asset.symbol)),
+        );
+        const changeBySymbol = new Map<string, number | null>();
+        if (symbols.length > 0) {
+          await Promise.all(
+            symbols.map(async (symbol) => {
+              try {
+                const response = await get<{ candles: Candle[] }>(
+                  `/api/assets/candles?symbol=${encodeURIComponent(symbol)}`,
+                );
+                const candles = response.candles;
+                if (candles.length < 2) {
+                  changeBySymbol.set(symbol, null);
+                  return;
+                }
+                const latest = candles[candles.length - 1];
+                const previous = candles[candles.length - 2];
+                if (!previous.close) {
+                  changeBySymbol.set(symbol, null);
+                  return;
+                }
+                const change = ((latest.close - previous.close) / previous.close) * 100;
+                changeBySymbol.set(symbol, change);
+              } catch (err) {
+                changeBySymbol.set(symbol, null);
+              }
+            }),
+          );
         }
         const accountMap = new Map(accountsResponse.map((item) => [item.id, item.name]));
         const priceMap = new Map(
@@ -180,18 +246,20 @@ export default function StocksPage() {
             shares: asset.quantity,
             avgEntry: null,
             price: priceInfo?.price ?? null,
-            change: 0,
+            change: changeBySymbol.get(asset.symbol) ?? null,
             currency: priceInfo?.currency_code ?? asset.currency_code,
             assetType: asset.asset_type,
             account: accountMap.get(asset.account_id) ?? "Unknown",
-            entryDate: "-",
+            entryDate: asset.created_at.split("T")[0],
           };
         });
         setAccounts(accountsResponse);
+        setGroups(groupsResponse);
+        setMemberships(membershipResponse);
         setHoldings(mappedHoldings);
         setHistory(historyResponse);
+        setTransactions(transactionsResponse);
         setHoldingAccount(accountsResponse[0]?.name ?? "");
-        setTrades([]);
       } catch (err) {
         if (isMounted) {
           setError("Unable to load stock data.");
@@ -202,19 +270,40 @@ export default function StocksPage() {
         }
       }
     };
-    loadData();
+    await run();
     return () => {
       isMounted = false;
     };
   }, []);
 
   useEffect(() => {
-    storeStrategies(strategies);
-  }, [strategies]);
+    let cleanup: (() => void) | undefined;
+    loadData().then((result) => {
+      cleanup = result;
+    });
+    return () => {
+      cleanup?.();
+    };
+  }, [loadData]);
+
+  const loadPreferences = useCallback(async () => {
+    setIsPreferencesLoading(true);
+    setPreferencesError(null);
+    try {
+      const response = await fetchPreferences();
+      setStrategies(response.strategies);
+      setHoldingStrategies(response.holdingStrategies);
+      setHoldingStrategy(response.strategies[0] ?? "Long Term");
+    } catch (err) {
+      setPreferencesError("Unable to load strategies right now.");
+    } finally {
+      setIsPreferencesLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    storeHoldingStrategies(holdingStrategies);
-  }, [holdingStrategies]);
+    loadPreferences();
+  }, [loadPreferences]);
 
   useEffect(() => {
     if (isLoading) {
@@ -242,6 +331,21 @@ export default function StocksPage() {
     const query = holdingTicker.toUpperCase();
     return unique.filter((symbol) => symbol.includes(query));
   }, [holdingTicker, holdings]);
+
+  const trades = useMemo<Trade[]>(
+    () =>
+      holdings.map((holding) => ({
+        id: `trade-${holding.id}`,
+        ticker: holding.ticker,
+        shares: holding.shares,
+        price: holding.price,
+        currency: holding.currency,
+        account: holding.account,
+        date: holding.entryDate,
+        side: "Buy",
+      })),
+    [holdings],
+  );
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
@@ -331,11 +435,19 @@ export default function StocksPage() {
     try {
       await Promise.all(ids.map((id) => del(`/api/assets/${id}`)));
       setHoldings((prev) => prev.filter((holding) => !selectedHoldings.has(holding.id)));
-      setHoldingStrategies((prev) => {
-        const next = { ...prev };
-        ids.forEach((id) => delete next[id]);
-        return next;
-      });
+      const previousStrategies = holdingStrategies;
+      const nextStrategies = { ...previousStrategies };
+      ids.forEach((id) => delete nextStrategies[id]);
+      setHoldingStrategies(nextStrategies);
+      try {
+        await updatePreferences({ holdingStrategies: nextStrategies });
+      } catch (err) {
+        setHoldingStrategies(previousStrategies);
+        showToast(
+          "Update failed",
+          getFriendlyErrorMessage(err, "Unable to update holding strategies."),
+        );
+      }
       setSelectedHoldings(new Set());
       showToast("Holdings deleted", `${ids.length} holding(s) removed.`);
     } catch (err) {
@@ -401,8 +513,20 @@ export default function StocksPage() {
       }
     }
     if (pendingStrategyEntries.length > 0) {
-      setHoldingStrategies((prev) => ({ ...prev, ...pendingStrategies }));
+      const previousStrategies = holdingStrategies;
+      const nextStrategies = { ...holdingStrategies, ...pendingStrategies };
+      setHoldingStrategies(nextStrategies);
       setPendingStrategies({});
+      try {
+        await updatePreferences({ holdingStrategies: nextStrategies });
+      } catch (err) {
+        setHoldingStrategies(previousStrategies);
+        showToast(
+          "Update failed",
+          getFriendlyErrorMessage(err, "Unable to update holding strategies."),
+        );
+        return;
+      }
     }
     if (selectedHoldings.size > 0) {
       await handleDeleteSelected();
@@ -421,11 +545,19 @@ export default function StocksPage() {
   }, [history, range.from, range.to]);
 
   const accountGroups: Record<string, string> = useMemo(() => {
-    return accountOptions.reduce<Record<string, string>>((acc, accountName) => {
-      acc[accountName] = "Ungrouped";
+    const groupNameById = new Map(groups.map((group) => [group.id, group.name]));
+    const accountGroupById = memberships.reduce<Record<string, string>>((acc, membership) => {
+      const groupName = groupNameById.get(membership.group_id);
+      if (groupName) {
+        acc[membership.account_id] = groupName;
+      }
       return acc;
     }, {});
-  }, [accountOptions]);
+    return accounts.reduce<Record<string, string>>((acc, account) => {
+      acc[account.name] = accountGroupById[account.id] ?? "Ungrouped";
+      return acc;
+    }, {});
+  }, [accounts, groups, memberships]);
 
   const matchesSelection = (account: string) =>
     (selectedAccount === "All Accounts" || selectedAccount === account) &&
@@ -451,16 +583,36 @@ export default function StocksPage() {
   const tooltipDates = performanceSeries.map((point) => point.date);
 
   const dividendBars = useMemo(() => {
-    if (holdings.length === 0) {
+    if (transactions.length === 0) {
       return [];
     }
-    return [
-      { label: "Jan", value: 240 },
-      { label: "Feb", value: 180 },
-      { label: "Mar", value: 320 },
-      { label: "Apr", value: 210 },
-    ];
-  }, [holdings.length]);
+    const now = new Date();
+    const months = Array.from({ length: 4 }, (_, index) => {
+      const date = new Date(now.getFullYear(), now.getMonth() - (3 - index), 1);
+      const label = date.toLocaleString("default", { month: "short" });
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      return { label, key };
+    });
+    const totals = new Map(months.map((month) => [month.key, 0]));
+    transactions.forEach((transaction) => {
+      if (transaction.transaction_type !== "income") {
+        return;
+      }
+      const monthKey = transaction.occurred_at.split("T")[0]?.slice(0, 7);
+      if (!monthKey || !totals.has(monthKey)) {
+        return;
+      }
+      const current = totals.get(monthKey) ?? 0;
+      totals.set(
+        monthKey,
+        current + convertAmount(transaction.amount, transaction.currency_code, displayCurrency),
+      );
+    });
+    return months.map((month) => ({
+      label: month.label,
+      value: Math.round(totals.get(month.key) ?? 0),
+    }));
+  }, [displayCurrency, transactions]);
 
   const stockAllocation = useMemo(() => {
     if (filteredHoldings.length === 0) {
@@ -549,7 +701,7 @@ export default function StocksPage() {
   ];
 
   const dayChange = filteredHoldings.reduce((sum, holding) => {
-    if (!holding.price) {
+    if (!holding.price || holding.change === null) {
       return sum;
     }
     const holdingValue = holding.price * holding.shares;
@@ -567,6 +719,27 @@ export default function StocksPage() {
     );
   }, 0);
 
+  const incomeLastYear = useMemo(() => {
+    if (transactions.length === 0) {
+      return 0;
+    }
+    const cutoff = new Date();
+    cutoff.setFullYear(cutoff.getFullYear() - 1);
+    return transactions.reduce((sum, transaction) => {
+      if (transaction.transaction_type !== "income") {
+        return sum;
+      }
+      const occurredAt = new Date(transaction.occurred_at);
+      if (occurredAt < cutoff) {
+        return sum;
+      }
+      return (
+        sum +
+        convertAmount(transaction.amount, transaction.currency_code, displayCurrency)
+      );
+    }, 0);
+  }, [displayCurrency, transactions]);
+
   if (isLoading) {
     return (
       <section className="page">
@@ -578,15 +751,28 @@ export default function StocksPage() {
   if (error) {
     return (
       <section className="page">
-        <div className="card page-state error">{error}</div>
+        <div className="card page-state error">
+          <p>{error}</p>
+          <button className="pill" type="button" onClick={loadData}>
+            Retry
+          </button>
+        </div>
       </section>
     );
   }
 
-  const equityTrend = totalMarketValue === 0 ? "0%" : "+3.8%";
-  const dividendYield = totalMarketValue === 0 ? "0%" : "2.9%";
-  const dayChangeTrend =
-    totalMarketValue === 0 ? "0%" : dayChange >= 0 ? "+1.1%" : "-0.6%";
+  const equityTrendValue =
+    performancePoints.length > 1
+      ? ((performancePoints[performancePoints.length - 1] - performancePoints[0]) /
+          Math.max(Math.abs(performancePoints[0]), 1)) *
+        100
+      : 0;
+  const equityTrend = `${equityTrendValue >= 0 ? "+" : ""}${equityTrendValue.toFixed(1)}%`;
+  const incomeYieldValue = totalMarketValue === 0 ? 0 : (incomeLastYear / totalMarketValue) * 100;
+  const incomeYield = `${incomeYieldValue.toFixed(1)}%`;
+  const dayChangePercent =
+    totalMarketValue === 0 ? 0 : (dayChange / Math.max(totalMarketValue, 1)) * 100;
+  const dayChangeTrend = `${dayChangePercent >= 0 ? "+" : ""}${dayChangePercent.toFixed(1)}%`;
 
   return (
     <section className="page">
@@ -651,10 +837,22 @@ export default function StocksPage() {
                     quantity: shares,
                     currency_code: currencyCode,
                   });
-                  setHoldingStrategies((prev) => ({
-                    ...prev,
+                  const nextStrategies = {
+                    ...holdingStrategies,
                     [createdAsset.id]: holdingStrategy,
-                  }));
+                  };
+                  setHoldingStrategies(nextStrategies);
+                  try {
+                    await updatePreferences({ holdingStrategies: nextStrategies });
+                  } catch (err) {
+                    showToast(
+                      "Strategy update failed",
+                      getFriendlyErrorMessage(
+                        err,
+                        "Holding saved, but strategy updates could not be stored.",
+                      ),
+                    );
+                  }
                   setHoldings((prev) => [
                     {
                       id: createdAsset.id,
@@ -662,7 +860,7 @@ export default function StocksPage() {
                       shares: createdAsset.quantity,
                       avgEntry: price,
                       price,
-                      change: 0,
+                      change: null,
                       currency: createdAsset.currency_code,
                       assetType: createdAsset.asset_type,
                       account: holdingAccount,
@@ -696,22 +894,12 @@ export default function StocksPage() {
                     );
                   }
                 } catch (err) {
-                  showToast("Save failed", "Unable to save holding.");
+                  showToast(
+                    "Save failed",
+                    getFriendlyErrorMessage(err, "Unable to save holding."),
+                  );
                   return;
                 }
-                setTrades((prev) => [
-                  {
-                    id: `trade-${normalizedTicker}-${Date.now()}`,
-                    ticker: normalizedTicker,
-                    shares,
-                    price,
-                    currency: currencyFromSymbol(normalizedTicker),
-                    account: holdingAccount,
-                    date: holdingDate,
-                    side: "Buy",
-                  },
-                  ...prev,
-                ]);
                 setIsHoldingOpen(false);
                 setHoldingTicker("");
                 setHoldingShares("");
@@ -791,13 +979,26 @@ export default function StocksPage() {
             <select
               value={holdingStrategy}
               onChange={(event) => setHoldingStrategy(event.target.value)}
+              disabled={isPreferencesLoading}
             >
-              {strategies.map((strategy) => (
-                <option key={strategy} value={strategy}>
-                  {strategy}
-                </option>
-              ))}
+              {isPreferencesLoading ? (
+                <option value="">Loading strategies…</option>
+              ) : (
+                strategies.map((strategy) => (
+                  <option key={strategy} value={strategy}>
+                    {strategy}
+                  </option>
+                ))
+              )}
             </select>
+            {preferencesError ? (
+              <div className="input-helper">
+                {preferencesError}{" "}
+                <button className="pill" type="button" onClick={loadPreferences}>
+                  Retry
+                </button>
+              </div>
+            ) : null}
           </label>
         </div>
       </Modal>
@@ -881,10 +1082,10 @@ export default function StocksPage() {
           footnote="vs last period"
         />
         <KpiCard
-          label="Dividend Yield"
-          value={dividendYield}
+          label="Income Yield"
+          value={incomeYield}
           trend={totalMarketValue === 0 ? "No data" : "Stable"}
-          footnote="trailing 12 months"
+          footnote="income over last 12 months"
         />
         <KpiCard
           label="Day Change"
@@ -961,10 +1162,10 @@ export default function StocksPage() {
       </div>
       <div className="split-grid">
         <div className="card">
-          <h3>Dividend cashflow</h3>
-          <p className="muted">Quarterly income distribution.</p>
+          <h3>Income cashflow</h3>
+          <p className="muted">Monthly income distribution from recorded transactions.</p>
           {dividendBars.length === 0 ? (
-            <p className="muted">No dividend activity yet.</p>
+            <p className="muted">No income activity yet.</p>
           ) : (
             <BarChart values={dividendBars} />
           )}
@@ -1123,9 +1324,14 @@ export default function StocksPage() {
                         displayCurrency,
                       )}
                 </span>
-                <span className={row.change < 0 ? "status warn" : "status"}>
-                  {row.change > 0 ? "+" : ""}
-                  {row.change.toFixed(1)}%
+                <span
+                  className={
+                    row.change !== null && row.change < 0 ? "status warn" : "status"
+                  }
+                >
+                  {row.change === null
+                    ? "—"
+                    : `${row.change > 0 ? "+" : ""}${row.change.toFixed(1)}%`}
                 </span>
                 <span className="cell-inline">
                   {isEditMode ? (
@@ -1212,8 +1418,8 @@ export default function StocksPage() {
       <div className="card list-card">
         <div className="card-header">
           <div>
-            <h3>Recent trades</h3>
-            <p className="muted">Individual fills for your stock activity.</p>
+            <h3>Recent holdings</h3>
+            <p className="muted">Latest additions across your portfolio.</p>
           </div>
         </div>
         <div className="list-row list-header columns-6">
@@ -1228,10 +1434,10 @@ export default function StocksPage() {
           <LoadingSkeleton label="Refreshing trades" lines={4} />
         ) : filteredTrades.length === 0 ? (
           <EmptyState
-            title={trades.length === 0 ? "No trades yet" : "No trades match this view"}
-            description="Trades show the most recent buys and sells across your portfolios."
+            title={trades.length === 0 ? "No holdings yet" : "No holdings match this view"}
+            description="Holdings show the most recent additions across your portfolios."
             actionLabel="Add holding"
-            actionHint="Add a holding to start generating trade history."
+            actionHint="Add a holding to start populating activity."
             onAction={() => setIsHoldingOpen(true)}
           />
         ) : (

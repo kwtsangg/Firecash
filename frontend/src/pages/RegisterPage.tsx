@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../components/AuthContext";
 import { ApiError, post } from "../utils/apiClient";
+import { getFriendlyErrorMessage } from "../utils/errorMessages";
 import { pageTitles } from "../utils/pageTitles";
 
 export default function RegisterPage() {
@@ -34,10 +35,12 @@ export default function RegisterPage() {
               login(response.token);
               navigate("/dashboard");
             } catch (err) {
-              if (err instanceof ApiError) {
-                setError(err.message);
+              if (err instanceof ApiError && err.status === 409) {
+                setError("An account with this email already exists.");
               } else {
-                setError("Unable to create account. Please try again.");
+                setError(
+                  getFriendlyErrorMessage(err, "Unable to create account. Please try again."),
+                );
               }
             } finally {
               setIsSubmitting(false);

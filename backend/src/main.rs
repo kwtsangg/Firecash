@@ -58,6 +58,10 @@ async fn main() {
                 .post(routes::account_groups::create_account_group),
         )
         .route(
+            "/api/account-groups/memberships",
+            get(routes::account_groups::list_account_group_memberships),
+        )
+        .route(
             "/api/account-groups/{id}",
             put(routes::account_groups::update_account_group)
                 .delete(routes::account_groups::delete_account_group),
@@ -95,6 +99,11 @@ async fn main() {
         .route("/api/history", get(routes::metrics::history))
         .route("/api/fx-rates", get(routes::metrics::fx_rates))
         .route("/api/fx-rates/refresh", post(routes::metrics::refresh_fx))
+        .route(
+            "/api/preferences",
+            get(routes::preferences::list_preferences)
+                .put(routes::preferences::update_preferences),
+        )
         .layer(CorsLayer::new().allow_origin(Any).allow_headers(Any))
         .with_state(state);
 

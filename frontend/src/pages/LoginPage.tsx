@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../components/AuthContext";
 import { ApiError, post } from "../utils/apiClient";
+import { getFriendlyErrorMessage } from "../utils/errorMessages";
 import { pageTitles } from "../utils/pageTitles";
 
 export default function LoginPage() {
@@ -34,10 +35,10 @@ export default function LoginPage() {
               login(response.token);
               navigate("/dashboard");
             } catch (err) {
-              if (err instanceof ApiError) {
-                setError(err.message);
+              if (err instanceof ApiError && err.status === 401) {
+                setError("Incorrect email or password.");
               } else {
-                setError("Unable to sign in. Please try again.");
+                setError(getFriendlyErrorMessage(err, "Unable to sign in. Please try again."));
               }
             } finally {
               setIsSubmitting(false);
@@ -92,11 +93,7 @@ export default function LoginPage() {
               login(response.token);
               navigate("/dashboard");
             } catch (err) {
-              if (err instanceof ApiError) {
-                setError(err.message);
-              } else {
-                setError("Unable to load the demo account.");
-              }
+              setError(getFriendlyErrorMessage(err, "Unable to load the demo account."));
             } finally {
               setIsDemoLoading(false);
             }

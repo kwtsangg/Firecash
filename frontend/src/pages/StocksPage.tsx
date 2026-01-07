@@ -87,12 +87,13 @@ export default function StocksPage() {
   const performance = useMemo(() => {
     const fromDate = new Date(range.from);
     const toDate = new Date(range.to);
-    return performanceSeries
+    const filtered = performanceSeries
       .filter((point) => {
         const date = new Date(point.date);
         return date >= fromDate && date <= toDate;
-      })
-      .map((point) => point.value);
+      });
+    const series = filtered.length > 0 ? filtered : performanceSeries;
+    return series.map((point) => point.value);
   }, [performanceSeries, range.from, range.to]);
   const dividendBars = useMemo(
     () => [

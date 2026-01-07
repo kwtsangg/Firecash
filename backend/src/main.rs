@@ -46,7 +46,7 @@ async fn main() {
         .route("/api/login", post(auth::login))
         .route("/api/accounts", get(routes::accounts::list_accounts).post(routes::accounts::create_account))
         .route(
-            "/api/accounts/:id",
+            "/api/accounts/{id}",
             put(routes::accounts::update_account).delete(routes::accounts::delete_account),
         )
         .route(
@@ -55,7 +55,7 @@ async fn main() {
                 .post(routes::account_groups::create_account_group),
         )
         .route(
-            "/api/account-groups/:id",
+            "/api/account-groups/{id}",
             put(routes::account_groups::update_account_group)
                 .delete(routes::account_groups::delete_account_group),
         )
@@ -65,7 +65,7 @@ async fn main() {
                 .post(routes::transactions::create_transaction),
         )
         .route(
-            "/api/transactions/:id",
+            "/api/transactions/{id}",
             put(routes::transactions::update_transaction)
                 .delete(routes::transactions::delete_transaction),
         )
@@ -75,13 +75,13 @@ async fn main() {
                 .post(routes::recurring_transactions::create_recurring_transaction),
         )
         .route(
-            "/api/recurring-transactions/:id",
+            "/api/recurring-transactions/{id}",
             put(routes::recurring_transactions::update_recurring_transaction)
                 .delete(routes::recurring_transactions::delete_recurring_transaction),
         )
         .route("/api/assets", get(routes::assets::list_assets).post(routes::assets::create_asset))
         .route(
-            "/api/assets/:id",
+            "/api/assets/{id}",
             put(routes::assets::update_asset).delete(routes::assets::delete_asset),
         )
         .route("/api/totals", get(routes::metrics::totals))

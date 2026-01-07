@@ -88,6 +88,19 @@ export default function DashboardPage() {
     ],
     [],
   );
+  const accountGroups: Record<string, string> = {
+    "Primary Account": "Cashflow",
+    Retirement: "Investments",
+    "Side Hustle": "Cashflow",
+  };
+  const matchesSelection = (account: string) =>
+    (selectedAccount === "All Accounts" || selectedAccount === account) &&
+    (selectedGroup === "All Groups" || accountGroups[account] === selectedGroup);
+  const filteredAssets = baseAssets.filter((asset) => matchesSelection(asset.account));
+  const filteredTransactions = transactions.filter((transaction) =>
+    matchesSelection(transaction.account),
+  );
+  const selectionScale = Math.max(0.4, filteredAssets.length / baseAssets.length || 1);
   const lineSeries = useMemo(() => {
     const fromDate = new Date(range.from);
     const toDate = new Date(range.to);
@@ -99,9 +112,9 @@ export default function DashboardPage() {
     const series = filtered.length > 0 ? filtered : baseSeries;
     return series.map((point) => ({
       date: point.date,
-      value: Math.round(point.value * multiplier),
+      value: Math.round(point.value * multiplier * selectionScale),
     }));
-  }, [baseSeries, range.from, range.to, refreshTick]);
+  }, [baseSeries, range.from, range.to, refreshTick, selectionScale]);
   const barValues = useMemo(
     () => [
       { label: "Mon", value: 10 },
@@ -124,19 +137,6 @@ export default function DashboardPage() {
     [],
   );
 
-  const accountGroups: Record<string, string> = {
-    "Primary Account": "Cashflow",
-    Retirement: "Investments",
-    "Side Hustle": "Cashflow",
-  };
-  const matchesSelection = (account: string) =>
-    (selectedAccount === "All Accounts" || selectedAccount === account) &&
-    (selectedGroup === "All Groups" || accountGroups[account] === selectedGroup);
-  const filteredAssets = baseAssets.filter((asset) => matchesSelection(asset.account));
-  const filteredTransactions = transactions.filter((transaction) =>
-    matchesSelection(transaction.account),
-  );
-
   const totalAssets = filteredAssets.reduce(
     (sum, asset) =>
       sum + convertAmount(asset.amount, asset.currency, displayCurrency),
@@ -152,19 +152,29 @@ export default function DashboardPage() {
   const midpointValue = Math.round((maxValue + minValue) / 2);
   const axisYLabels = [
     formatCurrency(maxValue, displayCurrency),
+    formatCurrency(Math.round(maxValue * 0.75), displayCurrency),
     formatCurrency(midpointValue, displayCurrency),
+    formatCurrency(Math.round(minValue + (maxValue - minValue) * 0.25), displayCurrency),
     formatCurrency(minValue, displayCurrency),
   ];
-  const labelIndexes = [
-    0,
-    Math.floor((lineSeries.length - 1) / 2),
-    Math.max(lineSeries.length - 1, 0),
-  ];
-  const axisXLabels = Array.from(new Set(labelIndexes))
+  const rangeDays = Math.max(
+    1,
+    Math.round(
+      (new Date(range.to).getTime() - new Date(range.from).getTime()) / 86400000,
+    ),
+  );
+  const axisDateFormat =
+    rangeDays <= 45
+      ? new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit" })
+      : new Intl.DateTimeFormat("en-GB", { month: "2-digit", year: "numeric" });
+  const labelCount = Math.min(lineSeries.length, rangeDays <= 45 ? 6 : 5);
+  const labelStep = labelCount > 1 ? (lineSeries.length - 1) / (labelCount - 1) : 0;
+  const axisXLabels = Array.from({ length: labelCount }, (_, index) =>
+    Math.round(index * labelStep),
+  )
+    .filter((index, position, list) => list.indexOf(index) === position)
     .filter((index) => lineSeries[index])
-    .map((index) =>
-      new Date(lineSeries[index].date).toLocaleString("en-US", { month: "short" }),
-    );
+    .map((index) => axisDateFormat.format(new Date(lineSeries[index].date)));
 
   return (
     <section className="page">

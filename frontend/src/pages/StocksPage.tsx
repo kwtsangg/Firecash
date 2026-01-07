@@ -136,6 +136,19 @@ export default function StocksPage() {
     ],
     [],
   );
+  const accountGroups: Record<string, string> = {
+    "Primary Account": "Cashflow",
+    Retirement: "Investments",
+    "HKD Growth": "Investments",
+  };
+  const matchesSelection = (account: string) =>
+    (selectedAccount === "All Accounts" || selectedAccount === account) &&
+    (selectedGroup === "All Groups" || accountGroups[account] === selectedGroup);
+  const filteredHoldings = holdings.filter((holding) =>
+    matchesSelection(holding.account),
+  );
+  const filteredTrades = trades.filter((trade) => matchesSelection(trade.account));
+  const selectionScale = Math.max(0.4, filteredHoldings.length / holdings.length || 1);
   const performanceSeriesFiltered = useMemo(() => {
     const fromDate = new Date(range.from);
     const toDate = new Date(range.to);
@@ -146,27 +159,38 @@ export default function StocksPage() {
       });
     return filtered.length > 0 ? filtered : performanceSeries;
   }, [performanceSeries, range.from, range.to]);
-  const performancePoints = performanceSeriesFiltered.map((point) => point.value);
+  const performancePoints = performanceSeriesFiltered.map((point) =>
+    Math.round(point.value * selectionScale),
+  );
   const performanceMax = Math.max(...performancePoints);
   const performanceMin = Math.min(...performancePoints);
   const performanceMidpoint = Math.round((performanceMax + performanceMin) / 2);
   const performanceYLabels = [
     formatCurrency(performanceMax, displayCurrency),
+    formatCurrency(Math.round(performanceMax * 0.75), displayCurrency),
     formatCurrency(performanceMidpoint, displayCurrency),
+    formatCurrency(Math.round(performanceMin + (performanceMax - performanceMin) * 0.25), displayCurrency),
     formatCurrency(performanceMin, displayCurrency),
   ];
-  const performanceLabelIndexes = [
-    0,
-    Math.floor((performanceSeriesFiltered.length - 1) / 2),
-    Math.max(performanceSeriesFiltered.length - 1, 0),
-  ];
-  const performanceXLabels = Array.from(new Set(performanceLabelIndexes))
+  const rangeDays = Math.max(
+    1,
+    Math.round(
+      (new Date(range.to).getTime() - new Date(range.from).getTime()) / 86400000,
+    ),
+  );
+  const axisDateFormat =
+    rangeDays <= 45
+      ? new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit" })
+      : new Intl.DateTimeFormat("en-GB", { month: "2-digit", year: "numeric" });
+  const labelCount = Math.min(performanceSeriesFiltered.length, rangeDays <= 45 ? 6 : 5);
+  const labelStep =
+    labelCount > 1 ? (performanceSeriesFiltered.length - 1) / (labelCount - 1) : 0;
+  const performanceXLabels = Array.from({ length: labelCount }, (_, index) =>
+    Math.round(index * labelStep),
+  )
+    .filter((index, position, list) => list.indexOf(index) === position)
     .filter((index) => performanceSeriesFiltered[index])
-    .map((index) =>
-      new Date(performanceSeriesFiltered[index].date).toLocaleString("en-US", {
-        month: "short",
-      }),
-    );
+    .map((index) => axisDateFormat.format(new Date(performanceSeriesFiltered[index].date)));
   const dividendBars = useMemo(
     () => [
       { label: "Jan", value: 240 },
@@ -185,18 +209,6 @@ export default function StocksPage() {
     ],
     [],
   );
-  const accountGroups: Record<string, string> = {
-    "Primary Account": "Cashflow",
-    Retirement: "Investments",
-    "HKD Growth": "Investments",
-  };
-  const matchesSelection = (account: string) =>
-    (selectedAccount === "All Accounts" || selectedAccount === account) &&
-    (selectedGroup === "All Groups" || accountGroups[account] === selectedGroup);
-  const filteredHoldings = holdings.filter((holding) =>
-    matchesSelection(holding.account),
-  );
-  const filteredTrades = trades.filter((trade) => matchesSelection(trade.account));
   const totalEquity = filteredHoldings.reduce(
     (sum, holding) =>
       sum + convertAmount(holding.price * holding.shares, holding.currency, displayCurrency),

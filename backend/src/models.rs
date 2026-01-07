@@ -17,6 +17,20 @@ pub struct CreateAccountRequest {
     pub currency_code: String,
 }
 
+#[derive(Deserialize)]
+pub struct UpdateAccountRequest {
+    pub name: Option<String>,
+    pub currency_code: Option<String>,
+}
+
+#[derive(Serialize, FromRow)]
+pub struct UpdateAccountResponse {
+    pub id: Uuid,
+    pub name: String,
+    pub currency_code: String,
+    pub created_at: DateTime<Utc>,
+}
+
 #[derive(Serialize, FromRow)]
 pub struct AccountGroup {
     pub id: Uuid,
@@ -27,6 +41,18 @@ pub struct AccountGroup {
 pub struct CreateAccountGroupRequest {
     pub name: String,
     pub account_ids: Vec<Uuid>,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateAccountGroupRequest {
+    pub name: Option<String>,
+    pub account_ids: Option<Vec<Uuid>>,
+}
+
+#[derive(Serialize, FromRow)]
+pub struct UpdateAccountGroupResponse {
+    pub id: Uuid,
+    pub name: String,
 }
 
 #[derive(Serialize, FromRow)]
@@ -50,6 +76,27 @@ pub struct CreateTransactionRequest {
     pub occurred_at: DateTime<Utc>,
 }
 
+#[derive(Deserialize)]
+pub struct UpdateTransactionRequest {
+    pub account_id: Option<Uuid>,
+    pub amount: Option<f64>,
+    pub currency_code: Option<String>,
+    pub transaction_type: Option<String>,
+    pub description: Option<String>,
+    pub occurred_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Serialize, FromRow)]
+pub struct UpdateTransactionResponse {
+    pub id: Uuid,
+    pub account_id: Uuid,
+    pub amount: f64,
+    pub currency_code: String,
+    pub transaction_type: String,
+    pub description: Option<String>,
+    pub occurred_at: DateTime<Utc>,
+}
+
 #[derive(Serialize, FromRow)]
 pub struct RecurringTransaction {
     pub id: Uuid,
@@ -64,6 +111,29 @@ pub struct RecurringTransaction {
 
 #[derive(Deserialize)]
 pub struct CreateRecurringTransactionRequest {
+    pub account_id: Uuid,
+    pub amount: f64,
+    pub currency_code: String,
+    pub transaction_type: String,
+    pub description: Option<String>,
+    pub interval_days: i32,
+    pub next_occurs_at: DateTime<Utc>,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateRecurringTransactionRequest {
+    pub account_id: Option<Uuid>,
+    pub amount: Option<f64>,
+    pub currency_code: Option<String>,
+    pub transaction_type: Option<String>,
+    pub description: Option<String>,
+    pub interval_days: Option<i32>,
+    pub next_occurs_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Serialize, FromRow)]
+pub struct UpdateRecurringTransactionResponse {
+    pub id: Uuid,
     pub account_id: Uuid,
     pub amount: f64,
     pub currency_code: String,
@@ -108,6 +178,7 @@ pub struct Asset {
     pub asset_type: String,
     pub quantity: f64,
     pub currency_code: String,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Deserialize)]
@@ -117,4 +188,24 @@ pub struct CreateAssetRequest {
     pub asset_type: String,
     pub quantity: f64,
     pub currency_code: String,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateAssetRequest {
+    pub account_id: Option<Uuid>,
+    pub symbol: Option<String>,
+    pub asset_type: Option<String>,
+    pub quantity: Option<f64>,
+    pub currency_code: Option<String>,
+}
+
+#[derive(Serialize, FromRow)]
+pub struct UpdateAssetResponse {
+    pub id: Uuid,
+    pub account_id: Uuid,
+    pub symbol: String,
+    pub asset_type: String,
+    pub quantity: f64,
+    pub currency_code: String,
+    pub created_at: DateTime<Utc>,
 }

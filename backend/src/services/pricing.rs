@@ -3,7 +3,7 @@ use serde::Deserialize;
 use sqlx::{postgres::PgPool, QueryBuilder, Row};
 use std::collections::HashMap;
 use std::io::{Error as IoError, ErrorKind};
-use tracing::warn;
+use tracing::info;
 use uuid::Uuid;
 
 #[derive(Deserialize)]
@@ -76,7 +76,7 @@ pub async fn refresh_asset_prices(
         if response.status() == reqwest::StatusCode::UNAUTHORIZED
             || response.status() == reqwest::StatusCode::FORBIDDEN
         {
-            warn!(
+            info!(
                 status = %response.status(),
                 "quote request unauthorized; skipping price refresh"
             );

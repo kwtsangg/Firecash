@@ -4,7 +4,7 @@ use serde::Deserialize;
 use sqlx::postgres::PgPool;
 use std::collections::HashMap;
 use std::io::{Error as IoError, ErrorKind};
-use tracing::info;
+use tracing::debug;
 
 #[allow(dead_code)]
 const SUPPORTED_CURRENCIES: [&str; 5] = ["USD", "EUR", "GBP", "JPY", "HKD"];
@@ -30,7 +30,7 @@ struct FxError {
 pub async fn refresh_fx_rates(pool: &PgPool) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let access_key = std::env::var("FX_ACCESS_KEY").ok();
     if access_key.is_none() {
-        info!("FX_ACCESS_KEY not set; skipping FX refresh");
+        debug!("FX_ACCESS_KEY not set; skipping FX refresh");
         return Ok(());
     }
     let client = Client::new();

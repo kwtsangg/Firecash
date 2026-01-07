@@ -2,7 +2,7 @@ use sqlx::postgres::PgPoolOptions;
 use std::time::Duration;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use firecash_api::services::pricing::refresh_asset_prices;
+use firecash_api::services::{forex::refresh_fx_rates, pricing::refresh_asset_prices};
 
 #[tokio::main]
 async fn main() {
@@ -43,20 +43,6 @@ async fn main() {
             tracing::error!(?error, "failed to refresh prices");
         }
     }
-}
-
-async fn refresh_fx_rates(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
-    tracing::info!("refreshing FX rates");
-    sqlx::query(
-        r#"
-        INSERT INTO fx_rates (id, base_currency, quote_currency, rate, recorded_on)
-        VALUES (gen_random_uuid(), 'USD', 'USD', 1.0, CURRENT_DATE)
-        ON CONFLICT DO NOTHING
-        "#,
-    )
-    .execute(pool)
-    .await?;
-    Ok(())
 }
 
 async fn refresh_recurring_transactions(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {

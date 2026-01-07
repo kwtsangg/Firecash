@@ -4,6 +4,7 @@ import { Selector } from "../components/Selectors";
 
 const navigation = [
   { label: "Dashboard", to: "/dashboard" },
+  { label: "Stocks", to: "/stocks" },
   { label: "Transactions", to: "/transactions" },
   { label: "Accounts", to: "/accounts" },
   { label: "Settings", to: "/settings" },
@@ -34,7 +35,7 @@ export default function DashboardLayout() {
           <Selector
             label="Currency"
             value={currency}
-            options={["USD", "EUR", "GBP", "JPY"]}
+            options={["USD", "EUR", "GBP", "JPY", "HKD"]}
             onChange={setCurrency}
           />
         </div>

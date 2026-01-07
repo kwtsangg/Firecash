@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import ActionToast, { ActionToastData } from "../components/ActionToast";
 import { BarChart, DonutChart, LineChart } from "../components/Charts";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import KpiCard from "../components/KpiCard";
@@ -8,6 +9,11 @@ export default function DashboardPage() {
     from: "2024-01-01",
     to: "2024-12-31",
   });
+  const [toast, setToast] = useState<ActionToastData | null>(null);
+
+  const showToast = (title: string, description?: string) => {
+    setToast({ title, description });
+  };
 
   const linePoints = useMemo(
     () => [52, 60, 68, 64, 71, 78, 83, 79, 88, 94, 102, 110],
@@ -45,10 +51,21 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="toolbar">
-          <button className="pill primary">Add Transaction</button>
-          <button className="pill">Refresh Prices</button>
+          <button
+            className="pill primary"
+            onClick={() => showToast("Transaction started", "Pick an account to continue.")}
+          >
+            Add Transaction
+          </button>
+          <button
+            className="pill"
+            onClick={() => showToast("Price refresh queued", "Fetching latest quotes.")}
+          >
+            Refresh Prices
+          </button>
         </div>
       </header>
+      {toast && <ActionToast toast={toast} onDismiss={() => setToast(null)} />}
       <div className="card-grid">
         <KpiCard
           label="Total Assets"
@@ -104,10 +121,30 @@ export default function DashboardPage() {
       <div className="card">
         <h3>Quick actions</h3>
         <div className="action-grid">
-          <button className="pill">Export CSV</button>
-          <button className="pill">Create Group</button>
-          <button className="pill">Set Budget</button>
-          <button className="pill">Share Snapshot</button>
+          <button
+            className="pill"
+            onClick={() => showToast("Export queued", "CSV export will download shortly.")}
+          >
+            Export CSV
+          </button>
+          <button
+            className="pill"
+            onClick={() => showToast("Group creator ready", "Name your new group.")}
+          >
+            Create Group
+          </button>
+          <button
+            className="pill"
+            onClick={() => showToast("Budget builder opened", "Adjust spending targets.")}
+          >
+            Set Budget
+          </button>
+          <button
+            className="pill"
+            onClick={() => showToast("Snapshot shared", "Link copied to clipboard.")}
+          >
+            Share Snapshot
+          </button>
         </div>
       </div>
     </section>

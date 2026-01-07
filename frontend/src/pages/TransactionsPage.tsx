@@ -1,4 +1,18 @@
+import { useState } from "react";
+import ActionToast, { ActionToastData } from "../components/ActionToast";
+import DateRangePicker, { DateRange } from "../components/DateRangePicker";
+
 export default function TransactionsPage() {
+  const [toast, setToast] = useState<ActionToastData | null>(null);
+  const [range, setRange] = useState<DateRange>({
+    from: "2024-03-01",
+    to: "2024-04-30",
+  });
+
+  const showToast = (title: string, description?: string) => {
+    setToast({ title, description });
+  };
+
   return (
     <section className="page">
       <header className="page-header">
@@ -7,17 +21,34 @@ export default function TransactionsPage() {
           <p className="muted">Review income and expenses across accounts.</p>
         </div>
         <div className="toolbar">
-          <button className="pill">Export CSV</button>
-          <button className="pill primary">Add Transaction</button>
+          <DateRangePicker value={range} onChange={setRange} />
+          <button
+            className="pill"
+            onClick={() => showToast("Export queued", "Transactions will download shortly.")}
+          >
+            Export CSV
+          </button>
+          <button
+            className="pill primary"
+            onClick={() => showToast("Transaction created", "Fill in the details below.")}
+          >
+            Add Transaction
+          </button>
         </div>
       </header>
+      {toast && <ActionToast toast={toast} onDismiss={() => setToast(null)} />}
       <div className="card">
         <div className="card-header">
           <div>
             <h3>Recurring schedules</h3>
             <p className="muted">Automate salaries, rent, and subscriptions.</p>
           </div>
-          <button className="pill primary">Schedule recurring</button>
+          <button
+            className="pill primary"
+            onClick={() => showToast("Schedule opened", "Choose cadence and amount.")}
+          >
+            Schedule recurring
+          </button>
         </div>
         <div className="list-row list-header columns-4">
           <span>Name</span>

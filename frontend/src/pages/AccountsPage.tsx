@@ -1,4 +1,13 @@
+import { useState } from "react";
+import ActionToast, { ActionToastData } from "../components/ActionToast";
+
 export default function AccountsPage() {
+  const [toast, setToast] = useState<ActionToastData | null>(null);
+
+  const showToast = (title: string, description?: string) => {
+    setToast({ title, description });
+  };
+
   return (
     <section className="page">
       <header className="page-header">
@@ -7,10 +16,21 @@ export default function AccountsPage() {
           <p className="muted">Manage accounts and groups.</p>
         </div>
         <div className="toolbar">
-          <button className="pill">Create Group</button>
-          <button className="pill primary">Add Account</button>
+          <button
+            className="pill"
+            onClick={() => showToast("Group setup ready", "Add accounts to a new bundle.")}
+          >
+            Create Group
+          </button>
+          <button
+            className="pill primary"
+            onClick={() => showToast("Account form opened", "Capture balance and currency.")}
+          >
+            Add Account
+          </button>
         </div>
       </header>
+      {toast && <ActionToast toast={toast} onDismiss={() => setToast(null)} />}
       <div className="split-grid">
         <div className="card">
           <h3>Accounts</h3>
@@ -23,6 +43,7 @@ export default function AccountsPage() {
             { name: "Primary Account", currency: "USD", status: "Active" },
             { name: "Retirement", currency: "USD", status: "Active" },
             { name: "Vacation Fund", currency: "EUR", status: "Paused" },
+            { name: "HKD Growth", currency: "HKD", status: "Active" },
           ].map((row) => (
             <div className="list-row columns-3" key={row.name}>
               <span>{row.name}</span>
@@ -41,7 +62,12 @@ export default function AccountsPage() {
               </span>
             ))}
           </div>
-          <button className="pill">Manage memberships</button>
+          <button
+            className="pill"
+            onClick={() => showToast("Memberships opened", "Assign accounts to groups.")}
+          >
+            Manage memberships
+          </button>
         </div>
       </div>
     </section>

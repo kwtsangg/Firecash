@@ -186,35 +186,36 @@ a {
   padding: 12px;
 }
 
-.chart-axis-shell {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 12px;
+.chart-axis-surface {
+  position: relative;
   align-items: stretch;
+  justify-content: stretch;
+  padding: 16px 16px 32px 56px;
 }
 
 .chart-axis-y {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  bottom: 40px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   font-size: 12px;
   color: #9aa3ba;
-  padding-right: 8px;
-}
-
-.chart-axis-plot {
-  position: relative;
-  display: grid;
-  grid-template-rows: 1fr auto;
-  gap: 8px;
+  pointer-events: none;
 }
 
 .chart-axis-x {
+  position: absolute;
+  left: 56px;
+  right: 16px;
+  bottom: 10px;
   display: flex;
   justify-content: space-between;
   font-size: 12px;
   color: #9aa3ba;
-  padding: 0 6px 4px;
+  pointer-events: none;
 }
 
 .pill {

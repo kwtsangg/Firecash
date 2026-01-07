@@ -384,19 +384,17 @@ export default function DashboardPage() {
           </div>
           <DateRangePicker value={range} onChange={setRange} />
         </div>
-        <div className="chart-surface chart-axis-shell">
+        <div className="chart-surface chart-axis-surface">
+          <LineChart points={linePoints} />
           <div className="chart-axis-y">
             {axisYLabels.map((label) => (
               <span key={label}>{label}</span>
             ))}
           </div>
-          <div className="chart-axis-plot">
-            <LineChart points={linePoints} />
-            <div className="chart-axis-x">
-              {axisXLabels.map((label, index) => (
-                <span key={`${label}-${index}`}>{label}</span>
-              ))}
-            </div>
+          <div className="chart-axis-x">
+            {axisXLabels.map((label, index) => (
+              <span key={`${label}-${index}`}>{label}</span>
+            ))}
           </div>
         </div>
       </div>

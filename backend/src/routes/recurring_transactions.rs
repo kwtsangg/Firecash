@@ -71,7 +71,7 @@ pub async fn create_recurring_transaction(
     .bind(payload.account_id)
     .bind(payload.amount)
     .bind(payload.currency_code)
-    .bind(payload.transaction_type)
+    .bind(payload.transaction_type.as_str())
     .bind(payload.description)
     .bind(payload.interval_days)
     .bind(payload.next_occurs_at)

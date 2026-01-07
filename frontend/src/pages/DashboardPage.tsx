@@ -7,6 +7,11 @@ import Modal from "../components/Modal";
 import { useCurrency } from "../components/CurrencyContext";
 import { useSelection } from "../components/SelectionContext";
 import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
+import {
+  formatTransactionType,
+  TRANSACTION_TYPES,
+  TransactionType,
+} from "../utils/transactions";
 
 export default function DashboardPage() {
   const accountOptions = ["Primary Account", "Retirement", "Side Hustle"];
@@ -22,7 +27,7 @@ export default function DashboardPage() {
   const [isTransactionOpen, setIsTransactionOpen] = useState(false);
   const [isBudgetOpen, setIsBudgetOpen] = useState(false);
   const [transactionAccount, setTransactionAccount] = useState(accountOptions[0]);
-  const [transactionType, setTransactionType] = useState("Income");
+  const [transactionType, setTransactionType] = useState<TransactionType>("income");
   const [transactionAmount, setTransactionAmount] = useState("");
   const [transactionDate, setTransactionDate] = useState("2026-04-20");
   const [transactionNotes, setTransactionNotes] = useState("");
@@ -33,7 +38,7 @@ export default function DashboardPage() {
   const [transactions, setTransactions] = useState<
     {
       account: string;
-      type: string;
+      type: TransactionType;
       amount: number;
       currency: string;
       date: string;
@@ -42,7 +47,7 @@ export default function DashboardPage() {
   >([
     {
       account: "Primary Account",
-      type: "Income",
+      type: "income",
       amount: 2400,
       currency: "USD",
       date: "2026-04-18",
@@ -50,7 +55,7 @@ export default function DashboardPage() {
     },
     {
       account: "Retirement",
-      type: "Expense",
+      type: "expense",
       amount: 320,
       currency: "USD",
       date: "2026-04-16",
@@ -143,7 +148,8 @@ export default function DashboardPage() {
     0,
   );
   const netIncome = filteredTransactions.reduce((sum, transaction) => {
-    const signedAmount = transaction.type === "Expense" ? -transaction.amount : transaction.amount;
+    const signedAmount =
+      transaction.type === "expense" ? -transaction.amount : transaction.amount;
     return sum + convertAmount(signedAmount, transaction.currency, displayCurrency);
   }, 0);
   const linePoints = lineSeries.map((point) => point.value);
@@ -259,11 +265,11 @@ export default function DashboardPage() {
             Type
             <select
               value={transactionType}
-              onChange={(event) => setTransactionType(event.target.value)}
+              onChange={(event) => setTransactionType(event.target.value as TransactionType)}
             >
-              {["Income", "Expense"].map((type) => (
+              {TRANSACTION_TYPES.map((type) => (
                 <option key={type} value={type}>
-                  {type}
+                  {formatTransactionType(type)}
                 </option>
               ))}
             </select>
@@ -472,7 +478,7 @@ export default function DashboardPage() {
           >
             <span>{transaction.date}</span>
             <span>{transaction.account}</span>
-            <span>{transaction.type}</span>
+            <span>{formatTransactionType(transaction.type)}</span>
             <span className="amount-cell">
               <span>
                 {formatCurrency(

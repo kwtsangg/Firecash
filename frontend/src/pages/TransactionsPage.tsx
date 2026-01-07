@@ -5,6 +5,11 @@ import Modal from "../components/Modal";
 import { useCurrency } from "../components/CurrencyContext";
 import { useSelection } from "../components/SelectionContext";
 import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
+import {
+  formatTransactionType,
+  TRANSACTION_TYPES,
+  TransactionType,
+} from "../utils/transactions";
 
 export default function TransactionsPage() {
   const accountOptions = ["Primary Account", "Retirement", "Side Hustle"];
@@ -17,7 +22,7 @@ export default function TransactionsPage() {
   });
   const [isTransactionOpen, setIsTransactionOpen] = useState(false);
   const [transactionAccount, setTransactionAccount] = useState(accountOptions[0]);
-  const [transactionType, setTransactionType] = useState("Income");
+  const [transactionType, setTransactionType] = useState<TransactionType>("income");
   const [transactionAmount, setTransactionAmount] = useState("");
   const [transactionDate, setTransactionDate] = useState("2026-04-20");
   const [transactionCurrency, setTransactionCurrency] = useState("USD");
@@ -25,7 +30,7 @@ export default function TransactionsPage() {
     {
       date: string;
       account: string;
-      type: string;
+      type: TransactionType;
       amount: number;
       currency: string;
       status: string;
@@ -34,7 +39,7 @@ export default function TransactionsPage() {
     {
       date: "2026-04-18",
       account: "Primary Account",
-      type: "Income",
+      type: "income",
       amount: 2400,
       currency: "USD",
       status: "Cleared",
@@ -42,7 +47,7 @@ export default function TransactionsPage() {
     {
       date: "2026-04-16",
       account: "Retirement",
-      type: "Expense",
+      type: "expense",
       amount: 320,
       currency: "USD",
       status: "Scheduled",
@@ -146,11 +151,11 @@ export default function TransactionsPage() {
             Type
             <select
               value={transactionType}
-              onChange={(event) => setTransactionType(event.target.value)}
+              onChange={(event) => setTransactionType(event.target.value as TransactionType)}
             >
-              {["Income", "Expense"].map((type) => (
+              {TRANSACTION_TYPES.map((type) => (
                 <option key={type} value={type}>
-                  {type}
+                  {formatTransactionType(type)}
                 </option>
               ))}
             </select>
@@ -241,7 +246,7 @@ export default function TransactionsPage() {
           <div className="list-row columns-5" key={`${row.date}-${row.amount}-${row.account}`}>
             <span>{row.date}</span>
             <span>{row.account}</span>
-            <span>{row.type}</span>
+            <span>{formatTransactionType(row.type)}</span>
             <span className="amount-cell">
               <span>
                 {formatCurrency(

@@ -69,7 +69,7 @@ pub async fn create_transaction(
     .bind(payload.account_id)
     .bind(payload.amount)
     .bind(payload.currency_code)
-    .bind(payload.transaction_type)
+    .bind(payload.transaction_type.as_str())
     .bind(payload.description)
     .bind(payload.occurred_at)
     .fetch_one(&state.pool)

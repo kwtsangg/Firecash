@@ -3,6 +3,22 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
+#[derive(Debug, Serialize, Deserialize, Copy, Clone, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum TransactionType {
+    Income,
+    Expense,
+}
+
+impl TransactionType {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            TransactionType::Income => "income",
+            TransactionType::Expense => "expense",
+        }
+    }
+}
+
 #[derive(Serialize, FromRow)]
 pub struct Account {
     pub id: Uuid,
@@ -45,7 +61,7 @@ pub struct CreateTransactionRequest {
     pub account_id: Uuid,
     pub amount: f64,
     pub currency_code: String,
-    pub transaction_type: String,
+    pub transaction_type: TransactionType,
     pub description: Option<String>,
     pub occurred_at: DateTime<Utc>,
 }
@@ -67,7 +83,7 @@ pub struct CreateRecurringTransactionRequest {
     pub account_id: Uuid,
     pub amount: f64,
     pub currency_code: String,
-    pub transaction_type: String,
+    pub transaction_type: TransactionType,
     pub description: Option<String>,
     pub interval_days: i32,
     pub next_occurs_at: DateTime<Utc>,

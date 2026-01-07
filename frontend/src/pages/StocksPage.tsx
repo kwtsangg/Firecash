@@ -8,6 +8,7 @@ import { useCurrency } from "../components/CurrencyContext";
 import { useSelection } from "../components/SelectionContext";
 import { get } from "../utils/apiClient";
 import { convertAmount, formatCurrency } from "../utils/currency";
+import { formatDateDisplay } from "../utils/date";
 
 type Account = {
   id: string;
@@ -173,10 +174,6 @@ export default function StocksPage() {
       (new Date(range.to).getTime() - new Date(range.from).getTime()) / 86400000,
     ),
   );
-  const axisDateFormat =
-    rangeDays <= 45
-      ? new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit" })
-      : new Intl.DateTimeFormat("en-GB", { month: "2-digit", year: "numeric" });
   const labelCount = Math.min(performanceSeries.length || 1, rangeDays <= 45 ? 6 : 5);
   const labelStep =
     labelCount > 1 ? (performanceSeries.length - 1) / (labelCount - 1) : 0;
@@ -185,7 +182,8 @@ export default function StocksPage() {
   )
     .filter((index, position, list) => list.indexOf(index) === position)
     .filter((index) => performanceSeries[index])
-    .map((index) => axisDateFormat.format(new Date(performanceSeries[index].date)));
+    .map((index) => formatDateDisplay(performanceSeries[index].date));
+  const tooltipDates = performanceSeries.map((point) => formatDateDisplay(point.date));
 
   const dividendBars = useMemo(() => {
     if (holdings.length === 0) {
@@ -437,7 +435,11 @@ export default function StocksPage() {
           </button>
         </div>
         <div className="chart-surface chart-axis-surface">
-          <LineChart points={performancePoints} />
+          <LineChart
+            points={performancePoints}
+            labels={tooltipDates}
+            formatValue={(value) => formatCurrency(value, displayCurrency)}
+          />
           <div className="chart-axis-y">
             {performanceYLabels.map((label) => (
               <span key={label}>{label}</span>
@@ -498,10 +500,14 @@ export default function StocksPage() {
               <span>{row.ticker}</span>
               <span>{row.shares}</span>
               <span>
-                {row.avgEntry === null ? "—" : formatCurrency(row.avgEntry, row.currency)}
+                {row.avgEntry === null
+                  ? "—"
+                  : `${formatCurrency(row.avgEntry, row.currency)} ${row.currency}`}
               </span>
               <span>
-                {row.price === null ? "—" : formatCurrency(row.price, row.currency)}
+                {row.price === null
+                  ? "—"
+                  : `${formatCurrency(row.price, row.currency)} ${row.currency}`}
               </span>
               <span>
                 {row.price === null
@@ -549,7 +555,7 @@ export default function StocksPage() {
         ) : (
           filteredTrades.map((trade) => (
             <div className="list-row columns-6" key={trade.id}>
-              <span>{trade.date}</span>
+              <span>{formatDateDisplay(trade.date)}</span>
               <span className={trade.side === "Sell" ? "status warn" : "status"}>
                 {trade.side}
               </span>

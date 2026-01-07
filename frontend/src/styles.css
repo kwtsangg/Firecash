@@ -369,6 +369,13 @@ a {
   font-size: 14px;
 }
 
+.inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .empty-state {
   color: #9aa3ba;
   font-style: italic;

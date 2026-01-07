@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { RequireAuth } from "./components/AuthContext";
 import DashboardLayout from "./layouts/DashboardLayout";
 import AccountsPage from "./pages/AccountsPage";
+import BudgetsPage from "./pages/BudgetsPage";
 import DashboardPage from "./pages/DashboardPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
@@ -25,6 +26,7 @@ export default function App() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/stocks" element={<StocksPage />} />
         <Route path="/transactions" element={<TransactionsPage />} />
+        <Route path="/budgets" element={<BudgetsPage />} />
         <Route path="/accounts" element={<AccountsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>

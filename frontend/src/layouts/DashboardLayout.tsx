@@ -10,6 +10,7 @@ const navigation = [
   { label: "Dashboard", to: "/dashboard" },
   { label: "Stocks", to: "/stocks" },
   { label: "Transactions", to: "/transactions" },
+  { label: "Budgets", to: "/budgets" },
   { label: "Accounts", to: "/accounts" },
   { label: "Settings", to: "/settings" },
 ];

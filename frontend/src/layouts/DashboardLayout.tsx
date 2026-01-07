@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useState } from "react";
 import { Selector } from "../components/Selectors";
+import { CurrencyProvider } from "../components/CurrencyContext";
 
 const navigation = [
   { label: "Dashboard", to: "/dashboard" },
@@ -16,10 +17,11 @@ export default function DashboardLayout() {
   const [currency, setCurrency] = useState("USD");
 
   return (
-    <div className="app-shell">
-      <header className="top-nav">
-        <div className="logo">Firecash</div>
-        <div className="nav-actions">
+    <CurrencyProvider currency={currency} setCurrency={setCurrency}>
+      <div className="app-shell">
+        <header className="top-nav">
+          <div className="logo">Firecash</div>
+          <div className="nav-actions">
           <Selector
             label="Account"
             value={account}
@@ -55,9 +57,10 @@ export default function DashboardLayout() {
           ))}
         </nav>
       </aside>
-      <main className="content">
-        <Outlet />
-      </main>
-    </div>
+        <main className="content">
+          <Outlet />
+        </main>
+      </div>
+    </CurrencyProvider>
   );
 }

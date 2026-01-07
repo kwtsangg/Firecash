@@ -4,10 +4,13 @@ import { BarChart, DonutChart, LineChart } from "../components/Charts";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import KpiCard from "../components/KpiCard";
 import Modal from "../components/Modal";
+import { useCurrency } from "../components/CurrencyContext";
+import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
 
 export default function DashboardPage() {
   const accountOptions = ["Primary Account", "Retirement", "Side Hustle"];
   const budgetCategories = ["Housing", "Investing", "Lifestyle", "Bills"];
+  const { currency: displayCurrency } = useCurrency();
   const [range, setRange] = useState<DateRange>({
     from: "2024-01-01",
     to: "2024-12-31",
@@ -21,9 +24,46 @@ export default function DashboardPage() {
   const [transactionAmount, setTransactionAmount] = useState("");
   const [transactionDate, setTransactionDate] = useState("2024-04-20");
   const [transactionNotes, setTransactionNotes] = useState("");
+  const [transactionCurrency, setTransactionCurrency] = useState("USD");
   const [budgetCategory, setBudgetCategory] = useState(budgetCategories[0]);
   const [budgetAmount, setBudgetAmount] = useState("");
   const [budgetStart, setBudgetStart] = useState("2024-04-01");
+  const [transactions, setTransactions] = useState<
+    {
+      account: string;
+      type: string;
+      amount: number;
+      currency: string;
+      date: string;
+      notes: string;
+    }[]
+  >([
+    {
+      account: "Primary Account",
+      type: "Income",
+      amount: 2400,
+      currency: "USD",
+      date: "2024-04-18",
+      notes: "Salary",
+    },
+    {
+      account: "Retirement",
+      type: "Expense",
+      amount: 320,
+      currency: "USD",
+      date: "2024-04-16",
+      notes: "Broker fee",
+    },
+  ]);
+
+  const baseAssets = useMemo(
+    () => [
+      { name: "Cash", amount: 42000, currency: "USD" },
+      { name: "Brokerage", amount: 56000, currency: "USD" },
+      { name: "Vacation Fund", amount: 18000, currency: "EUR" },
+    ],
+    [],
+  );
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
@@ -80,6 +120,16 @@ export default function DashboardPage() {
     [],
   );
 
+  const totalAssets = baseAssets.reduce(
+    (sum, asset) =>
+      sum + convertAmount(asset.amount, asset.currency, displayCurrency),
+    0,
+  );
+  const netIncome = transactions.reduce((sum, transaction) => {
+    const signedAmount = transaction.type === "Expense" ? -transaction.amount : transaction.amount;
+    return sum + convertAmount(signedAmount, transaction.currency, displayCurrency);
+  }, 0);
+
   return (
     <section className="page">
       <header className="page-header">
@@ -118,7 +168,25 @@ export default function DashboardPage() {
               className="pill primary"
               type="button"
               onClick={() => {
+                const amount = Number(transactionAmount);
+                if (!amount) {
+                  showToast("Missing amount", "Enter a transaction amount to save.");
+                  return;
+                }
+                setTransactions((prev) => [
+                  {
+                    account: transactionAccount,
+                    type: transactionType,
+                    amount,
+                    currency: transactionCurrency,
+                    date: transactionDate,
+                    notes: transactionNotes || "Manual entry",
+                  },
+                  ...prev,
+                ]);
                 setIsTransactionOpen(false);
+                setTransactionAmount("");
+                setTransactionNotes("");
                 showToast("Transaction saved", "Your entry has been recorded.");
               }}
             >
@@ -162,6 +230,19 @@ export default function DashboardPage() {
               value={transactionAmount}
               onChange={(event) => setTransactionAmount(event.target.value)}
             />
+          </label>
+          <label>
+            Currency
+            <select
+              value={transactionCurrency}
+              onChange={(event) => setTransactionCurrency(event.target.value)}
+            >
+              {supportedCurrencies.map((currencyOption) => (
+                <option key={currencyOption} value={currencyOption}>
+                  {currencyOption}
+                </option>
+              ))}
+            </select>
           </label>
           <label>
             Date
@@ -242,14 +323,14 @@ export default function DashboardPage() {
       <div className="card-grid">
         <KpiCard
           label="Total Assets"
-          value="$128,420"
+          value={formatCurrency(totalAssets, displayCurrency)}
           trend="+4.2%"
           footnote="vs last period"
         />
         <KpiCard
           label="Net Income"
-          value="$6,240"
-          trend="+12%"
+          value={formatCurrency(netIncome, displayCurrency)}
+          trend={netIncome >= 0 ? "+12%" : "-6%"}
           footnote="This month"
         />
         <KpiCard
@@ -319,6 +400,32 @@ export default function DashboardPage() {
             Share Snapshot
           </button>
         </div>
+      </div>
+      <div className="card list-card">
+        <div className="list-row list-header columns-5">
+          <span>Date</span>
+          <span>Account</span>
+          <span>Type</span>
+          <span>Amount ({displayCurrency})</span>
+          <span>Notes</span>
+        </div>
+        {transactions.map((transaction) => (
+          <div
+            className="list-row columns-5"
+            key={`${transaction.date}-${transaction.amount}-${transaction.notes}`}
+          >
+            <span>{transaction.date}</span>
+            <span>{transaction.account}</span>
+            <span>{transaction.type}</span>
+            <span>
+              {formatCurrency(
+                convertAmount(transaction.amount, transaction.currency, displayCurrency),
+                displayCurrency,
+              )}
+            </span>
+            <span>{transaction.notes}</span>
+          </div>
+        ))}
       </div>
     </section>
   );

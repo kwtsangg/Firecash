@@ -2,9 +2,12 @@ import { useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import Modal from "../components/Modal";
+import { useCurrency } from "../components/CurrencyContext";
+import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
 
 export default function TransactionsPage() {
   const accountOptions = ["Primary Account", "Retirement", "Side Hustle"];
+  const { currency: displayCurrency } = useCurrency();
   const [toast, setToast] = useState<ActionToastData | null>(null);
   const [range, setRange] = useState<DateRange>({
     from: "2024-03-01",
@@ -15,6 +18,34 @@ export default function TransactionsPage() {
   const [transactionType, setTransactionType] = useState("Income");
   const [transactionAmount, setTransactionAmount] = useState("");
   const [transactionDate, setTransactionDate] = useState("2024-04-20");
+  const [transactionCurrency, setTransactionCurrency] = useState("USD");
+  const [transactions, setTransactions] = useState<
+    {
+      date: string;
+      account: string;
+      type: string;
+      amount: number;
+      currency: string;
+      status: string;
+    }[]
+  >([
+    {
+      date: "2024-04-18",
+      account: "Primary Account",
+      type: "Income",
+      amount: 2400,
+      currency: "USD",
+      status: "Cleared",
+    },
+    {
+      date: "2024-04-16",
+      account: "Retirement",
+      type: "Expense",
+      amount: 320,
+      currency: "USD",
+      status: "Scheduled",
+    },
+  ]);
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
@@ -57,7 +88,24 @@ export default function TransactionsPage() {
               className="pill primary"
               type="button"
               onClick={() => {
+                const amount = Number(transactionAmount);
+                if (!amount) {
+                  showToast("Missing amount", "Enter a transaction amount to save.");
+                  return;
+                }
+                setTransactions((prev) => [
+                  {
+                    date: transactionDate,
+                    account: transactionAccount,
+                    type: transactionType,
+                    amount,
+                    currency: transactionCurrency,
+                    status: "Cleared",
+                  },
+                  ...prev,
+                ]);
                 setIsTransactionOpen(false);
+                setTransactionAmount("");
                 showToast("Transaction saved", "Your entry has been recorded.");
               }}
             >
@@ -101,6 +149,19 @@ export default function TransactionsPage() {
               value={transactionAmount}
               onChange={(event) => setTransactionAmount(event.target.value)}
             />
+          </label>
+          <label>
+            Currency
+            <select
+              value={transactionCurrency}
+              onChange={(event) => setTransactionCurrency(event.target.value)}
+            >
+              {supportedCurrencies.map((currencyOption) => (
+                <option key={currencyOption} value={currencyOption}>
+                  {currencyOption}
+                </option>
+              ))}
+            </select>
           </label>
           <label>
             Occurred on
@@ -159,30 +220,20 @@ export default function TransactionsPage() {
           <span>Date</span>
           <span>Account</span>
           <span>Type</span>
-          <span>Amount</span>
+          <span>Amount ({displayCurrency})</span>
           <span>Status</span>
         </div>
-        {[
-          {
-            date: "2024-04-18",
-            account: "Primary Account",
-            type: "Income",
-            amount: "$2,400",
-            status: "Cleared",
-          },
-          {
-            date: "2024-04-16",
-            account: "Retirement",
-            type: "Expense",
-            amount: "$320",
-            status: "Scheduled",
-          },
-        ].map((row) => (
-          <div className="list-row columns-5" key={row.date + row.amount}>
+        {transactions.map((row) => (
+          <div className="list-row columns-5" key={`${row.date}-${row.amount}-${row.account}`}>
             <span>{row.date}</span>
             <span>{row.account}</span>
             <span>{row.type}</span>
-            <span>{row.amount}</span>
+            <span>
+              {formatCurrency(
+                convertAmount(row.amount, row.currency, displayCurrency),
+                displayCurrency,
+              )}
+            </span>
             <span className="status">{row.status}</span>
           </div>
         ))}

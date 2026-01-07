@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS price_history (
+  id UUID PRIMARY KEY,
+  asset_id UUID NOT NULL REFERENCES assets(id),
+  price DOUBLE PRECISION NOT NULL,
+  currency_code TEXT NOT NULL,
+  recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

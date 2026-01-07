@@ -1,5 +1,4 @@
 mod auth;
-mod migrations;
 mod models;
 mod routes;
 mod state;
@@ -34,7 +33,8 @@ async fn main() {
     auth::ensure_database(&pool)
         .await
         .expect("database not reachable");
-    migrations::run_with_repair(&pool)
+    sqlx::migrate!("./migrations")
+        .run(&pool)
         .await
         .expect("failed to run migrations");
 

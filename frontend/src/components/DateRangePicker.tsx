@@ -11,6 +11,7 @@ type Preset = {
 };
 
 const presets: Preset[] = [
+  { label: "1D", days: 1 },
   { label: "7D", days: 7 },
   { label: "30D", days: 30 },
   { label: "90D", days: 90 },

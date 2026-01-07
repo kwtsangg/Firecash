@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
+import EmptyState from "../components/EmptyState";
+import LoadingSkeleton from "../components/LoadingSkeleton";
 import Modal from "../components/Modal";
 import { useCurrency } from "../components/CurrencyContext";
 import { useSelection } from "../components/SelectionContext";
@@ -75,6 +77,7 @@ export default function TransactionsPage() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isFiltering, setIsFiltering] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -141,6 +144,15 @@ export default function TransactionsPage() {
       setCategories(readCategories());
     }
   }, [isTransactionOpen]);
+
+  useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+    setIsFiltering(true);
+    const timer = window.setTimeout(() => setIsFiltering(false), 350);
+    return () => window.clearTimeout(timer);
+  }, [isLoading, range.from, range.to, selectedAccount, selectedGroup]);
 
   useEffect(() => {
     if (!categories.includes(transactionCategory)) {
@@ -308,7 +320,7 @@ export default function TransactionsPage() {
   if (isLoading) {
     return (
       <section className="page">
-        <div className="card page-state">Loading transactions...</div>
+        <LoadingSkeleton label="Loading transactions" lines={7} />
       </section>
     );
   }
@@ -568,10 +580,20 @@ export default function TransactionsPage() {
           <span>Amount ({displayCurrency})</span>
           <span>Status</span>
         </div>
-        {filteredTransactions.length === 0 ? (
-          <div className={`list-row ${isEditMode ? "columns-7" : "columns-6"} empty-state`}>
-            No transactions available.
-          </div>
+        {isFiltering ? (
+          <LoadingSkeleton label="Refreshing transactions" lines={6} />
+        ) : filteredTransactions.length === 0 ? (
+          <EmptyState
+            title={
+              transactions.length === 0
+                ? "No transactions yet"
+                : "No transactions match this range"
+            }
+            description="Transactions capture inflows and outflows so your cashflow metrics stay accurate."
+            actionLabel="Add transaction"
+            actionHint="Log a transaction to see performance totals."
+            onAction={() => setIsTransactionOpen(true)}
+          />
         ) : (
           <>
             {filteredTransactions.map((row) => {

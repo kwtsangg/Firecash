@@ -56,6 +56,14 @@ async fn main() {
                 .post(routes::transactions::create_transaction),
         )
         .route(
+            "/api/transactions/:transaction_id/reconcile",
+            post(routes::transactions::reconcile_transaction),
+        )
+        .route(
+            "/api/transfers",
+            get(routes::transfers::list_transfers).post(routes::transfers::create_transfer),
+        )
+        .route(
             "/api/recurring-transactions",
             get(routes::recurring_transactions::list_recurring_transactions)
                 .post(routes::recurring_transactions::create_recurring_transaction),

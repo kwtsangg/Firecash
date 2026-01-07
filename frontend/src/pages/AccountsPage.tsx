@@ -27,6 +27,11 @@ export default function AccountsPage() {
     { name: "Vacation Fund", currency: "EUR", status: "Paused", group: "Cashflow" },
     { name: "HKD Growth", currency: "HKD", status: "Active", group: "Investments" },
   ];
+  const reconciliationSummary = [
+    { account: "Primary Account", reconciled: 18, pending: 2, lastChecked: "2026-04-19" },
+    { account: "Retirement", reconciled: 12, pending: 4, lastChecked: "2026-04-17" },
+    { account: "Vacation Fund", reconciled: 6, pending: 1, lastChecked: "2026-04-10" },
+  ];
   const filteredAccounts = accountRows.filter(
     (row) =>
       (selectedAccount === "All Accounts" || row.name === selectedAccount) &&
@@ -231,6 +236,26 @@ export default function AccountsPage() {
           >
             Manage memberships
           </button>
+        </div>
+        <div className="card list-card">
+          <div>
+            <h3>Reconciliation summary</h3>
+            <p className="muted">Track pending clears across accounts.</p>
+          </div>
+          <div className="list-row list-header columns-4">
+            <span>Account</span>
+            <span>Reconciled</span>
+            <span>Pending</span>
+            <span>Last checked</span>
+          </div>
+          {reconciliationSummary.map((row) => (
+            <div className="list-row columns-4" key={row.account}>
+              <span>{row.account}</span>
+              <span className="status">{row.reconciled}</span>
+              <span className="status">{row.pending}</span>
+              <span className="muted">{row.lastChecked}</span>
+            </div>
+          ))}
         </div>
       </div>
     </section>

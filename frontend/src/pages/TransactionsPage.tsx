@@ -16,11 +16,20 @@ export default function TransactionsPage() {
     to: "2026-04-30",
   });
   const [isTransactionOpen, setIsTransactionOpen] = useState(false);
+  const [isTransferOpen, setIsTransferOpen] = useState(false);
   const [transactionAccount, setTransactionAccount] = useState(accountOptions[0]);
   const [transactionType, setTransactionType] = useState("Income");
   const [transactionAmount, setTransactionAmount] = useState("");
   const [transactionDate, setTransactionDate] = useState("2026-04-20");
   const [transactionCurrency, setTransactionCurrency] = useState("USD");
+  const [transferFromAccount, setTransferFromAccount] = useState(accountOptions[0]);
+  const [transferToAccount, setTransferToAccount] = useState(
+    accountOptions[1] ?? accountOptions[0],
+  );
+  const [transferAmount, setTransferAmount] = useState("");
+  const [transferDate, setTransferDate] = useState("2026-04-20");
+  const [transferCurrency, setTransferCurrency] = useState("USD");
+  const [transferNote, setTransferNote] = useState("");
   const [transactions, setTransactions] = useState<
     {
       date: string;
@@ -29,6 +38,7 @@ export default function TransactionsPage() {
       amount: number;
       currency: string;
       status: string;
+      reconciled: boolean;
     }[]
   >([
     {
@@ -38,6 +48,7 @@ export default function TransactionsPage() {
       amount: 2400,
       currency: "USD",
       status: "Cleared",
+      reconciled: true,
     },
     {
       date: "2026-04-16",
@@ -46,6 +57,7 @@ export default function TransactionsPage() {
       amount: 320,
       currency: "USD",
       status: "Scheduled",
+      reconciled: false,
     },
   ]);
 
@@ -86,6 +98,9 @@ export default function TransactionsPage() {
           >
             Add Transaction
           </button>
+          <button className="pill" onClick={() => setIsTransferOpen(true)}>
+            New Transfer
+          </button>
         </div>
       </header>
       <Modal
@@ -107,17 +122,18 @@ export default function TransactionsPage() {
                   showToast("Missing amount", "Enter a transaction amount to save.");
                   return;
                 }
-                setTransactions((prev) => [
-                  {
-                    date: transactionDate,
-                    account: transactionAccount,
-                    type: transactionType,
-                    amount,
-                    currency: transactionCurrency,
-                    status: "Cleared",
-                  },
-                  ...prev,
-                ]);
+                  setTransactions((prev) => [
+                    {
+                      date: transactionDate,
+                      account: transactionAccount,
+                      type: transactionType,
+                      amount,
+                      currency: transactionCurrency,
+                      status: "Cleared",
+                      reconciled: false,
+                    },
+                    ...prev,
+                  ]);
                 setIsTransactionOpen(false);
                 setTransactionAmount("");
                 showToast("Transaction saved", "Your entry has been recorded.");
@@ -187,6 +203,134 @@ export default function TransactionsPage() {
           </label>
         </div>
       </Modal>
+      <Modal
+        title="New transfer"
+        description="Move funds between accounts and track transfer status."
+        isOpen={isTransferOpen}
+        onClose={() => setIsTransferOpen(false)}
+        footer={
+          <>
+            <button className="pill" type="button" onClick={() => setIsTransferOpen(false)}>
+              Cancel
+            </button>
+            <button
+              className="pill primary"
+              type="button"
+              onClick={() => {
+                const amount = Number(transferAmount);
+                if (!amount) {
+                  showToast("Missing amount", "Enter a transfer amount to continue.");
+                  return;
+                }
+                if (transferFromAccount === transferToAccount) {
+                  showToast("Choose two accounts", "Transfers require distinct accounts.");
+                  return;
+                }
+                const transferRows = [
+                  {
+                    date: transferDate,
+                    account: transferFromAccount,
+                    type: "Transfer Out",
+                    amount: -Math.abs(amount),
+                    currency: transferCurrency,
+                    status: "Scheduled",
+                    reconciled: false,
+                  },
+                  {
+                    date: transferDate,
+                    account: transferToAccount,
+                    type: "Transfer In",
+                    amount: Math.abs(amount),
+                    currency: transferCurrency,
+                    status: "Scheduled",
+                    reconciled: false,
+                  },
+                ];
+                setTransactions((prev) => [...transferRows, ...prev]);
+                setIsTransferOpen(false);
+                setTransferAmount("");
+                setTransferNote("");
+                showToast(
+                  "Transfer created",
+                  transferNote
+                    ? `${transferNote} has been staged for reconciliation.`
+                    : "Two transfer entries have been staged.",
+                );
+              }}
+            >
+              Save Transfer
+            </button>
+          </>
+        }
+      >
+        <div className="form-grid">
+          <label>
+            From account
+            <select
+              value={transferFromAccount}
+              onChange={(event) => setTransferFromAccount(event.target.value)}
+            >
+              {accountOptions.map((account) => (
+                <option key={account} value={account}>
+                  {account}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            To account
+            <select
+              value={transferToAccount}
+              onChange={(event) => setTransferToAccount(event.target.value)}
+            >
+              {accountOptions.map((account) => (
+                <option key={account} value={account}>
+                  {account}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Amount
+            <input
+              type="number"
+              placeholder="0.00"
+              value={transferAmount}
+              onChange={(event) => setTransferAmount(event.target.value)}
+            />
+          </label>
+          <label>
+            Currency
+            <select
+              value={transferCurrency}
+              onChange={(event) => setTransferCurrency(event.target.value)}
+            >
+              {supportedCurrencies.map((currencyOption) => (
+                <option key={currencyOption} value={currencyOption}>
+                  {currencyOption}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Occurred on
+            <input
+              type="date"
+              value={transferDate}
+              onChange={(event) => setTransferDate(event.target.value)}
+            />
+          </label>
+          <label>
+            Note
+            <input
+              type="text"
+              placeholder="Payroll sweep"
+              value={transferNote}
+              onChange={(event) => setTransferNote(event.target.value)}
+            />
+          </label>
+        </div>
+      </Modal>
       {toast && <ActionToast toast={toast} onDismiss={() => setToast(null)} />}
       <div className="card">
         <div className="card-header">
@@ -230,15 +374,16 @@ export default function TransactionsPage() {
         ))}
       </div>
       <div className="card list-card">
-        <div className="list-row list-header columns-5">
+        <div className="list-row list-header columns-6">
           <span>Date</span>
           <span>Account</span>
           <span>Type</span>
           <span>Amount ({displayCurrency})</span>
           <span>Status</span>
+          <span>Reconciled</span>
         </div>
-        {filteredTransactions.map((row) => (
-          <div className="list-row columns-5" key={`${row.date}-${row.amount}-${row.account}`}>
+        {filteredTransactions.map((row, index) => (
+          <div className="list-row columns-6" key={`${row.date}-${row.amount}-${row.account}`}>
             <span>{row.date}</span>
             <span>{row.account}</span>
             <span>{row.type}</span>
@@ -254,6 +399,21 @@ export default function TransactionsPage() {
               </span>
             </span>
             <span className="status">{row.status}</span>
+            <label className="status">
+              <input
+                type="checkbox"
+                checked={row.reconciled}
+                onChange={(event) => {
+                  const reconciled = event.target.checked;
+                  setTransactions((prev) =>
+                    prev.map((entry, entryIndex) =>
+                      entryIndex === index ? { ...entry, reconciled } : entry,
+                    ),
+                  );
+                }}
+              />
+              {row.reconciled ? "Yes" : "No"}
+            </label>
           </div>
         ))}
       </div>

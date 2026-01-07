@@ -38,6 +38,8 @@ pub struct Transaction {
     pub transaction_type: String,
     pub description: Option<String>,
     pub occurred_at: DateTime<Utc>,
+    pub transfer_id: Option<Uuid>,
+    pub reconciled: bool,
 }
 
 #[derive(Deserialize)]
@@ -48,6 +50,32 @@ pub struct CreateTransactionRequest {
     pub transaction_type: String,
     pub description: Option<String>,
     pub occurred_at: DateTime<Utc>,
+}
+
+#[derive(Serialize, FromRow)]
+pub struct Transfer {
+    pub id: Uuid,
+    pub from_account_id: Uuid,
+    pub to_account_id: Uuid,
+    pub amount: f64,
+    pub currency_code: String,
+    pub description: Option<String>,
+    pub occurred_at: DateTime<Utc>,
+}
+
+#[derive(Deserialize)]
+pub struct CreateTransferRequest {
+    pub from_account_id: Uuid,
+    pub to_account_id: Uuid,
+    pub amount: f64,
+    pub currency_code: String,
+    pub description: Option<String>,
+    pub occurred_at: DateTime<Utc>,
+}
+
+#[derive(Deserialize)]
+pub struct ReconcileTransactionRequest {
+    pub reconciled: bool,
 }
 
 #[derive(Serialize, FromRow)]

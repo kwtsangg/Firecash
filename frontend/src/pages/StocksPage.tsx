@@ -151,9 +151,9 @@ export default function StocksPage() {
   const performanceMin = Math.min(...performancePoints);
   const performanceMidpoint = Math.round((performanceMax + performanceMin) / 2);
   const performanceYLabels = [
-    { label: formatCurrency(performanceMax, displayCurrency), position: 12 },
-    { label: formatCurrency(performanceMidpoint, displayCurrency), position: 52 },
-    { label: formatCurrency(performanceMin, displayCurrency), position: 92 },
+    formatCurrency(performanceMax, displayCurrency),
+    formatCurrency(performanceMidpoint, displayCurrency),
+    formatCurrency(performanceMin, displayCurrency),
   ];
   const performanceLabelIndexes = [
     0,
@@ -162,12 +162,11 @@ export default function StocksPage() {
   ];
   const performanceXLabels = Array.from(new Set(performanceLabelIndexes))
     .filter((index) => performanceSeriesFiltered[index])
-    .map((index) => ({
-      label: new Date(performanceSeriesFiltered[index].date).toLocaleString("en-US", {
+    .map((index) =>
+      new Date(performanceSeriesFiltered[index].date).toLocaleString("en-US", {
         month: "short",
       }),
-      position: (index / Math.max(performanceSeriesFiltered.length - 1, 1)) * 94 + 3,
-    }));
+    );
   const dividendBars = useMemo(
     () => [
       { label: "Jan", value: 240 },
@@ -400,12 +399,18 @@ export default function StocksPage() {
             Compare Benchmark
           </button>
         </div>
-        <div className="chart-surface">
-          <LineChart
-            points={performancePoints}
-            xLabels={performanceXLabels}
-            yLabels={performanceYLabels}
-          />
+        <div className="chart-surface chart-axis-surface">
+          <LineChart points={performancePoints} />
+          <div className="chart-axis-y">
+            {performanceYLabels.map((label) => (
+              <span key={label}>{label}</span>
+            ))}
+          </div>
+          <div className="chart-axis-x">
+            {performanceXLabels.map((label, index) => (
+              <span key={`${label}-${index}`}>{label}</span>
+            ))}
+          </div>
         </div>
       </div>
       <div className="split-grid">

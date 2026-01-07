@@ -3,6 +3,7 @@ import { CandlestickChart } from "../components/Charts";
 import { get } from "../utils/apiClient";
 import { formatCurrency } from "../utils/currency";
 import { formatDateDisplay } from "../utils/date";
+import { pageTitles } from "../utils/pageTitles";
 
 type Asset = {
   id: string;
@@ -185,7 +186,7 @@ export default function StockMarketPage() {
     <section className="page">
       <header className="page-header">
         <div>
-          <h1>Market view</h1>
+          <h1>{pageTitles.stockMarket}</h1>
           <p className="muted">Explore daily price action for tracked symbols.</p>
           <p className="muted">Price source: Stooq.</p>
         </div>

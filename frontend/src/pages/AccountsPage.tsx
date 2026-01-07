@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
 import Modal from "../components/Modal";
 import { useSelection } from "../components/SelectionContext";
+import Breadcrumbs from "../layouts/Breadcrumbs";
 import { get, post } from "../utils/apiClient";
+import { pageTitles } from "../utils/pageTitles";
 
 type Account = {
   id: string;
@@ -126,6 +128,30 @@ export default function AccountsPage() {
     return matchesAccount && matchesGroup;
   });
 
+  const breadcrumbs = [
+    { label: pageTitles.accounts, to: "/accounts" },
+    {
+      label: selectedGroup === "All Groups" ? "All Groups" : selectedGroup,
+      hint:
+        groups.length === 0
+          ? "No account groups yet."
+          : selectedGroup !== "All Groups" &&
+              selectedGroup !== "Ungrouped" &&
+              !groups.some((group) => group.name === selectedGroup)
+            ? "Group not found."
+            : undefined,
+    },
+    {
+      label: selectedAccount === "All Accounts" ? "All Accounts" : selectedAccount,
+      hint:
+        accounts.length === 0
+          ? "No accounts yet."
+          : filteredAccounts.length === 0
+            ? "No accounts match this view."
+            : undefined,
+    },
+  ];
+
   if (isLoading) {
     return (
       <section className="page">
@@ -144,9 +170,10 @@ export default function AccountsPage() {
 
   return (
     <section className="page">
+      <Breadcrumbs items={breadcrumbs} />
       <header className="page-header">
         <div>
-          <h1>Accounts</h1>
+          <h1>{pageTitles.accounts}</h1>
           <p className="muted">Manage accounts and groups.</p>
         </div>
         <div className="toolbar">

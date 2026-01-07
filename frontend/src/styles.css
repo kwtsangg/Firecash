@@ -71,6 +71,20 @@ a {
   gap: 16px;
 }
 
+.primary-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.nav-section-title {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 12px;
+  color: #7f89a6;
+  margin: 4px 8px 8px;
+}
+
 .nav-link {
   display: flex;
   padding: 12px 16px;
@@ -86,6 +100,41 @@ a {
 
 .content {
   padding: 32px;
+}
+
+.breadcrumbs {
+  font-size: 14px;
+  color: #9aa3ba;
+}
+
+.breadcrumbs ol {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.breadcrumb-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.breadcrumb-item::after {
+  content: "›";
+  color: #4f5670;
+  margin-left: 6px;
+}
+
+.breadcrumb-item:last-child::after {
+  content: "";
+}
+
+.breadcrumb-hint {
+  font-size: 12px;
+  color: #f0c674;
 }
 
 .icon-button {

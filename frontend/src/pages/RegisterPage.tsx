@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../components/AuthContext";
 import { ApiError, post } from "../utils/apiClient";
+import { pageTitles } from "../utils/pageTitles";
 
 export default function RegisterPage() {
   const navigate = useNavigate();
@@ -15,7 +16,7 @@ export default function RegisterPage() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <h1>Create your account</h1>
+        <h1>{pageTitles.register}</h1>
         <p className="muted">Start tracking your net worth today.</p>
         <form
           className="auth-form"

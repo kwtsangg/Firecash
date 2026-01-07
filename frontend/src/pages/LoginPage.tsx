@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../components/AuthContext";
 import { ApiError, post } from "../utils/apiClient";
+import { pageTitles } from "../utils/pageTitles";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -15,7 +16,7 @@ export default function LoginPage() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <h1>Welcome back</h1>
+        <h1>{pageTitles.login}</h1>
         <p className="muted">Sign in to track your assets.</p>
         <form
           className="auth-form"

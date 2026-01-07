@@ -2,9 +2,11 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { RequireAuth } from "./components/AuthContext";
 import DashboardLayout from "./layouts/DashboardLayout";
 import AccountsPage from "./pages/AccountsPage";
+import BudgetsPage from "./pages/BudgetsPage";
 import DashboardPage from "./pages/DashboardPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
+import ReportsPage from "./pages/ReportsPage";
 import SettingsPage from "./pages/SettingsPage";
 import StocksPage from "./pages/StocksPage";
 import StockMarketPage from "./pages/StockMarketPage";
@@ -28,6 +30,8 @@ export default function App() {
         <Route path="/stocks/market" element={<StockMarketPage />} />
         <Route path="/transactions" element={<TransactionsPage />} />
         <Route path="/accounts" element={<AccountsPage />} />
+        <Route path="/budgets" element={<BudgetsPage />} />
+        <Route path="/reports" element={<ReportsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
     </Routes>

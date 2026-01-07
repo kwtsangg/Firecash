@@ -5,6 +5,7 @@ import { ApiError, get, post, put } from "../utils/apiClient";
 import { readCategories, storeCategories } from "../utils/categories";
 import { readStrategies, storeStrategies } from "../utils/strategies";
 import { formatDateDisplay } from "../utils/date";
+import { pageTitles } from "../utils/pageTitles";
 
 type UserProfile = {
   id: string;
@@ -89,7 +90,7 @@ export default function SettingsPage() {
     <section className="page">
       <header className="page-header">
         <div>
-          <h1>Settings</h1>
+          <h1>{pageTitles.settings}</h1>
           <p className="muted">Profile, currency, and API access.</p>
         </div>
         <div className="toolbar">

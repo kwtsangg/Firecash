@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Outlet, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import { Selector } from "../components/Selectors";
 import { CurrencyProvider } from "../components/CurrencyContext";
@@ -6,15 +6,7 @@ import { SelectionProvider } from "../components/SelectionContext";
 import { version } from "../../package.json";
 import { get } from "../utils/apiClient";
 import { useAuth } from "../components/AuthContext";
-
-const navigation = [
-  { label: "Dashboard", to: "/dashboard" },
-  { label: "Stocks", to: "/stocks" },
-  { label: "Market", to: "/stocks/market" },
-  { label: "Transactions", to: "/transactions" },
-  { label: "Accounts", to: "/accounts" },
-  { label: "Settings", to: "/settings" },
-];
+import PrimaryNavigation from "./PrimaryNavigation";
 
 export default function DashboardLayout() {
   const navigate = useNavigate();
@@ -145,19 +137,7 @@ export default function DashboardLayout() {
           </header>
           {isSidebarOpen && (
             <aside className="sidebar">
-              <nav>
-                {navigation.map((item) => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    className={({ isActive }) =>
-                      `nav-link ${isActive ? "active" : ""}`
-                    }
-                  >
-                    {item.label}
-                  </NavLink>
-                ))}
-              </nav>
+              <PrimaryNavigation />
             </aside>
           )}
           <main className="content">

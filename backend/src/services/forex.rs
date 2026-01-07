@@ -4,6 +4,7 @@ use serde::Deserialize;
 use sqlx::postgres::PgPool;
 use std::collections::HashMap;
 use std::io::{Error as IoError, ErrorKind};
+use tracing::info;
 
 #[allow(dead_code)]
 const SUPPORTED_CURRENCIES: [&str; 5] = ["USD", "EUR", "GBP", "JPY", "HKD"];
@@ -27,11 +28,21 @@ struct FxError {
 
 #[allow(dead_code)]
 pub async fn refresh_fx_rates(pool: &PgPool) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let access_key = std::env::var("FX_ACCESS_KEY").ok();
+    if access_key.is_none() {
+        info!("FX_ACCESS_KEY not set; skipping FX refresh");
+        return Ok(());
+    }
     let client = Client::new();
     let symbols = SUPPORTED_CURRENCIES.join(",");
+    let access_key = access_key.expect("checked above");
     let url = Url::parse_with_params(
         "https://api.exchangerate.host/latest",
-        &[("base", "USD"), ("symbols", symbols.as_str())],
+        &[
+            ("base", "USD"),
+            ("symbols", symbols.as_str()),
+            ("access_key", access_key.as_str()),
+        ],
     )?;
     let response = client
         .get(url)

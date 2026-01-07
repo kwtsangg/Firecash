@@ -18,7 +18,7 @@ pub async fn refresh_fx_rates(pool: &PgPool) -> Result<(), Box<dyn std::error::E
     let symbols = SUPPORTED_CURRENCIES.join(",");
     let url = Url::parse_with_params(
         "https://api.exchangerate.host/latest",
-        &[("base", "USD"), ("symbols", symbols)],
+        &[("base", "USD"), ("symbols", symbols.as_str())],
     )?;
     let response = client.get(url).send().await?;
     let payload: FxResponse = response.json().await?;

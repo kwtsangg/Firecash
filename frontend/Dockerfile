@@ -6,6 +6,7 @@ COPY tsconfig.json tsconfig.json
 COPY vite.config.ts vite.config.ts
 COPY index.html index.html
 COPY src src
+RUN npm install -g npm@11.7.0
 RUN npm install
 RUN npm run build
 

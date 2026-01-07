@@ -296,6 +296,11 @@ textarea:focus-visible,
   border: none;
 }
 
+.pill.danger {
+  background: linear-gradient(120deg, #ff6b6b, #ff7aa2);
+  border: none;
+}
+
 .user-indicator {
   padding: 6px 12px;
   border-radius: 999px;
@@ -664,6 +669,12 @@ textarea:focus-visible,
   padding: 10px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   font-size: 14px;
+}
+
+.row-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .row-selected {

@@ -7,5 +7,6 @@ CREATE TABLE IF NOT EXISTS recurring_transactions (
   description TEXT,
   interval_days INTEGER NOT NULL,
   next_occurs_at TIMESTAMPTZ NOT NULL,
+  is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

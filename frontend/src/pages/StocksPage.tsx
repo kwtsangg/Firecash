@@ -177,6 +177,7 @@ export default function StocksPage() {
   const [error, setError] = useState<string | null>(null);
   const [isPreferencesLoading, setIsPreferencesLoading] = useState(true);
   const [preferencesError, setPreferencesError] = useState<string | null>(null);
+  const [lastPriceUpdate, setLastPriceUpdate] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     let isMounted = true;
@@ -238,6 +239,7 @@ export default function StocksPage() {
         const priceMap = new Map(
           pricesResponse.map((price) => [price.asset_id, price]),
         );
+        setLastPriceUpdate(getLatestPriceTimestamp(pricesResponse));
         const mappedHoldings = assetsResponse.map((asset) => {
           const priceInfo = priceMap.get(asset.id);
           return {
@@ -351,6 +353,18 @@ export default function StocksPage() {
     setToast({ title, description });
   };
 
+  const getLatestPriceTimestamp = (prices: AssetPrice[]) => {
+    const timestamps = prices
+      .map((price) => price.recorded_at)
+      .filter((timestamp): timestamp is string => Boolean(timestamp));
+    if (timestamps.length === 0) {
+      return null;
+    }
+    return timestamps.reduce((latest, timestamp) =>
+      new Date(timestamp) > new Date(latest) ? timestamp : latest,
+    );
+  };
+
   const applyPriceUpdates = (prices: AssetPrice[]) => {
     const priceMap = new Map(prices.map((price) => [price.asset_id, price]));
     setHoldings((prev) =>
@@ -377,6 +391,7 @@ export default function StocksPage() {
       );
       const pricesResponse = await get<AssetPrice[]>("/api/assets/prices");
       applyPriceUpdates(pricesResponse);
+      setLastPriceUpdate(getLatestPriceTimestamp(pricesResponse));
       const updatedCount = refreshResponse?.updated ?? 0;
       const availablePrices = pricesResponse.filter((price) => price.price !== null)
         .length;
@@ -410,7 +425,10 @@ export default function StocksPage() {
         showToast("No prices available", "Latest price data could not be fetched.");
       }
     } catch (err) {
-      showToast("Quote sync failed", "Unable to refresh stock prices.");
+      showToast(
+        "Quote sync failed",
+        getFriendlyErrorMessage(err, "Unable to refresh stock prices."),
+      );
     }
   };
 
@@ -773,6 +791,9 @@ export default function StocksPage() {
   const dayChangePercent =
     totalMarketValue === 0 ? 0 : (dayChange / Math.max(totalMarketValue, 1)) * 100;
   const dayChangeTrend = `${dayChangePercent >= 0 ? "+" : ""}${dayChangePercent.toFixed(1)}%`;
+  const lastPriceLabel = lastPriceUpdate
+    ? new Date(lastPriceUpdate).toLocaleString()
+    : "Not yet";
 
   return (
     <section className="page">
@@ -781,6 +802,7 @@ export default function StocksPage() {
           <h1>{pageTitles.stocks}</h1>
           <p className="muted">Track holdings, dividends, and live price momentum.</p>
           <p className="muted">Price source: Stooq.</p>
+          <p className="muted">Last price refresh: {lastPriceLabel}.</p>
         </div>
         <div className="toolbar">
           <DateRangePicker value={range} onChange={setRange} />
@@ -874,6 +896,7 @@ export default function StocksPage() {
                   );
                   const pricesResponse = await get<AssetPrice[]>("/api/assets/prices");
                   applyPriceUpdates(pricesResponse);
+                  setLastPriceUpdate(getLatestPriceTimestamp(pricesResponse));
                   const priceInfo = pricesResponse.find(
                     (item) => item.asset_id === createdAsset.id,
                   );

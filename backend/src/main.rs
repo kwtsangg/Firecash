@@ -86,6 +86,10 @@ async fn main() {
             put(routes::recurring_transactions::update_recurring_transaction)
                 .delete(routes::recurring_transactions::delete_recurring_transaction),
         )
+        .route(
+            "/api/recurring-transactions/{id}/skip",
+            post(routes::recurring_transactions::skip_recurring_transaction),
+        )
         .route("/api/assets", get(routes::assets::list_assets).post(routes::assets::create_asset))
         .route("/api/assets/prices", get(routes::assets::list_asset_prices))
         .route("/api/assets/price-status", get(routes::assets::asset_price_status))

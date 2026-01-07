@@ -31,7 +31,7 @@ pub async fn list_recurring_transactions(
     let records = sqlx::query_as::<_, RecurringTransaction>(
         r#"
         SELECT rt.id, rt.account_id, rt.amount, rt.currency_code, rt.transaction_type,
-               rt.description, rt.interval_days, rt.next_occurs_at
+               rt.description, rt.interval_days, rt.next_occurs_at, rt.is_enabled
         FROM recurring_transactions rt
         INNER JOIN accounts a ON rt.account_id = a.id
         WHERE a.user_id = $1
@@ -75,15 +75,16 @@ pub async fn create_recurring_transaction(
     }
 
     let id = Uuid::new_v4();
+    let is_enabled = payload.is_enabled.unwrap_or(true);
     let record = sqlx::query_as::<_, RecurringTransaction>(
         r#"
         INSERT INTO recurring_transactions (
             id, account_id, amount, currency_code, transaction_type, description,
-            interval_days, next_occurs_at
+            interval_days, next_occurs_at, is_enabled
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING id, account_id, amount, currency_code, transaction_type,
-                  description, interval_days, next_occurs_at
+                  description, interval_days, next_occurs_at, is_enabled
         "#,
     )
     .bind(id)
@@ -94,6 +95,7 @@ pub async fn create_recurring_transaction(
     .bind(payload.description)
     .bind(payload.interval_days)
     .bind(payload.next_occurs_at)
+    .bind(is_enabled)
     .fetch_one(&state.pool)
     .await
     .map_err(crate::auth::internal_error)?;
@@ -155,10 +157,11 @@ pub async fn update_recurring_transaction(
             transaction_type = COALESCE($4, transaction_type),
             description = COALESCE($5, description),
             interval_days = COALESCE($6, interval_days),
-            next_occurs_at = COALESCE($7, next_occurs_at)
-        WHERE id = $8
+            next_occurs_at = COALESCE($7, next_occurs_at),
+            is_enabled = COALESCE($8, is_enabled)
+        WHERE id = $9
         RETURNING id, account_id, amount, currency_code, transaction_type,
-                  description, interval_days, next_occurs_at
+                  description, interval_days, next_occurs_at, is_enabled
         "#,
     )
     .bind(payload.account_id)
@@ -168,10 +171,41 @@ pub async fn update_recurring_transaction(
     .bind(payload.description)
     .bind(payload.interval_days)
     .bind(payload.next_occurs_at)
+    .bind(payload.is_enabled)
     .bind(recurring_id)
     .fetch_one(&state.pool)
     .await
     .map_err(crate::auth::internal_error)?;
+
+    Ok(Json(record))
+}
+
+pub async fn skip_recurring_transaction(
+    State(state): State<AppState>,
+    user: AuthenticatedUser,
+    Path(recurring_id): Path<Uuid>,
+) -> Result<Json<UpdateRecurringTransactionResponse>, (axum::http::StatusCode, String)> {
+    let record = sqlx::query_as::<_, UpdateRecurringTransactionResponse>(
+        r#"
+        UPDATE recurring_transactions rt
+        SET next_occurs_at = rt.next_occurs_at + make_interval(days => rt.interval_days)
+        FROM accounts a
+        WHERE rt.account_id = a.id
+          AND a.user_id = $1
+          AND rt.id = $2
+        RETURNING rt.id, rt.account_id, rt.amount, rt.currency_code, rt.transaction_type,
+                  rt.description, rt.interval_days, rt.next_occurs_at, rt.is_enabled
+        "#,
+    )
+    .bind(user.id)
+    .bind(recurring_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(crate::auth::internal_error)?;
+
+    let Some(record) = record else {
+        return Err((StatusCode::NOT_FOUND, "Recurring transaction not found".into()));
+    };
 
     Ok(Json(record))
 }

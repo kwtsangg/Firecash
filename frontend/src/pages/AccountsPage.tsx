@@ -7,6 +7,8 @@ import { useSelection } from "../components/SelectionContext";
 import Breadcrumbs from "../layouts/Breadcrumbs";
 import {
   AccountGroupMembership,
+  createAccountGroup,
+  deleteAccountGroup,
   fetchAccountGroupMemberships,
   fetchAccountGroups,
   updateAccountGroup,
@@ -30,9 +32,15 @@ export default function AccountsPage() {
   const [toast, setToast] = useState<ActionToastData | null>(null);
   const { account: selectedAccount, group: selectedGroup } = useSelection();
   const [isGroupOpen, setIsGroupOpen] = useState(false);
+  const [isGroupDeleteOpen, setIsGroupDeleteOpen] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isMembershipOpen, setIsMembershipOpen] = useState(false);
   const [groupName, setGroupName] = useState("");
+  const [groupAccountIds, setGroupAccountIds] = useState<string[]>([]);
+  const [groupError, setGroupError] = useState<string | null>(null);
+  const [isGroupSaving, setIsGroupSaving] = useState(false);
+  const [groupEditingId, setGroupEditingId] = useState<string | null>(null);
+  const [groupDeleteTarget, setGroupDeleteTarget] = useState<AccountGroup | null>(null);
   const [accountName, setAccountName] = useState("");
   const [accountCurrency, setAccountCurrency] = useState("USD");
   const [membershipGroup, setMembershipGroup] = useState("");
@@ -122,6 +130,20 @@ export default function AccountsPage() {
     }, {});
   }, [memberships]);
 
+  const groupAccountCounts = useMemo(
+    () =>
+      groups.reduce<Record<string, number>>((acc, group) => {
+        acc[group.id] = membershipsByGroup[group.id]?.size ?? 0;
+        return acc;
+      }, {}),
+    [groups, membershipsByGroup],
+  );
+
+  const ungroupedCount = useMemo(() => {
+    const groupedIds = new Set(memberships.map((membership) => membership.account_id));
+    return accounts.filter((account) => !groupedIds.has(account.id)).length;
+  }, [accounts, memberships]);
+
   const applyMembershipUpdate = async () => {
     if (!membershipAccount) {
       showToast("Missing account", "Choose an account to update.");
@@ -153,7 +175,7 @@ export default function AccountsPage() {
           nextIds.forEach((id) =>
             nextMemberships.push({ account_id: id, group_id: group.id }),
           );
-          return updateAccountGroup(group.id, nextIds);
+          return updateAccountGroup(group.id, { account_ids: nextIds });
         }),
       );
       setMemberships(nextMemberships);
@@ -172,29 +194,105 @@ export default function AccountsPage() {
     }
   };
 
-  const handleCreateGroup = async () => {
-    if (!groupName.trim()) {
-      showToast("Missing name", "Enter a group name to save.");
+  const openCreateGroup = () => {
+    setGroupEditingId(null);
+    setGroupName("");
+    setGroupAccountIds([]);
+    setGroupError(null);
+    setIsGroupOpen(true);
+  };
+
+  const openEditGroup = (group: AccountGroup) => {
+    setGroupEditingId(group.id);
+    setGroupName(group.name);
+    setGroupAccountIds(Array.from(membershipsByGroup[group.id] ?? []));
+    setGroupError(null);
+    setIsGroupOpen(true);
+  };
+
+  const handleSaveGroup = async () => {
+    const trimmed = groupName.trim();
+    if (!trimmed) {
+      setGroupError("Enter a group name to continue.");
       return;
     }
-    const trimmed = groupName.trim();
+    setGroupError(null);
+    setIsGroupSaving(true);
+    const isEdit = Boolean(groupEditingId);
     const tempId = `temp-${Date.now()}`;
     const optimisticGroup: AccountGroup = { id: tempId, name: trimmed };
-    setGroups((prev) => [optimisticGroup, ...prev]);
-    setIsGroupOpen(false);
-    setGroupName("");
-    try {
-      const created = await post<AccountGroup>("/api/account-groups", {
-        name: trimmed,
-        account_ids: [],
-      });
+    const previousGroups = groups;
+    const previousMemberships = memberships;
+    if (!isEdit) {
+      setGroups((prev) => [optimisticGroup, ...prev]);
+    } else {
       setGroups((prev) =>
-        prev.map((group) => (group.id === tempId ? created : group)),
+        prev.map((group) =>
+          group.id === groupEditingId ? { ...group, name: trimmed } : group,
+        ),
       );
-      showToast("Group created", `Created ${created.name}.`);
+    }
+    setIsGroupOpen(false);
+    try {
+      const saved = isEdit
+        ? await updateAccountGroup(groupEditingId as string, {
+            name: trimmed,
+            account_ids: groupAccountIds,
+          })
+        : await createAccountGroup(trimmed, groupAccountIds);
+      if (isEdit) {
+        setGroups((prev) =>
+          prev.map((group) => (group.id === saved.id ? saved : group)),
+        );
+      } else {
+        setGroups((prev) =>
+          prev.map((group) => (group.id === tempId ? saved : group)),
+        );
+      }
+      const nextMemberships: AccountGroupMembership[] = [
+        ...previousMemberships.filter((membership) => membership.group_id !== saved.id),
+        ...groupAccountIds.map((account_id) => ({ account_id, group_id: saved.id })),
+      ];
+      setMemberships(nextMemberships);
+      showToast(
+        isEdit ? "Group updated" : "Group created",
+        isEdit ? `Saved ${saved.name}.` : `Created ${saved.name}.`,
+      );
     } catch (err) {
-      setGroups((prev) => prev.filter((group) => group.id !== tempId));
-      showToast("Save failed", "Unable to create this group.");
+      setGroups(previousGroups);
+      setMemberships(previousMemberships);
+      setGroupError(getFriendlyErrorMessage(err, "Unable to save this group."));
+      setIsGroupOpen(true);
+    } finally {
+      setIsGroupSaving(false);
+    }
+  };
+
+  const openDeleteGroup = (group: AccountGroup) => {
+    setGroupDeleteTarget(group);
+    setIsGroupDeleteOpen(true);
+  };
+
+  const handleDeleteGroup = async () => {
+    if (!groupDeleteTarget) {
+      return;
+    }
+    const target = groupDeleteTarget;
+    const previousGroups = groups;
+    const previousMemberships = memberships;
+    setIsGroupDeleteOpen(false);
+    setGroupDeleteTarget(null);
+    setGroups((prev) => prev.filter((group) => group.id !== target.id));
+    setMemberships((prev) =>
+      prev.filter((membership) => membership.group_id !== target.id),
+    );
+    try {
+      await deleteAccountGroup(target.id);
+      showToast("Group deleted", `${target.name} was removed.`);
+    } catch (err) {
+      setGroups(previousGroups);
+      setMemberships(previousMemberships);
+      showToast("Delete failed", getFriendlyErrorMessage(err, "Unable to delete group."));
     }
   };
 
@@ -310,7 +408,7 @@ export default function AccountsPage() {
         <div className="toolbar">
           <button
             className="pill"
-            onClick={() => setIsGroupOpen(true)}
+            onClick={openCreateGroup}
           >
             Create Group
           </button>
@@ -323,8 +421,12 @@ export default function AccountsPage() {
         </div>
       </header>
       <Modal
-        title="Create group"
-        description="Bundle accounts under a shared view."
+        title={groupEditingId ? "Edit group" : "Create group"}
+        description={
+          groupEditingId
+            ? "Rename the group and adjust account assignments."
+            : "Bundle accounts under a shared view."
+        }
         isOpen={isGroupOpen}
         onClose={() => setIsGroupOpen(false)}
         footer={
@@ -335,9 +437,10 @@ export default function AccountsPage() {
             <button
               className="pill primary"
               type="button"
-              onClick={handleCreateGroup}
+              onClick={handleSaveGroup}
+              disabled={isGroupSaving}
             >
-              Save Group
+              {isGroupSaving ? "Saving..." : "Save Group"}
             </button>
           </>
         }
@@ -349,10 +452,66 @@ export default function AccountsPage() {
               type="text"
               placeholder="Investments"
               value={groupName}
-              onChange={(event) => setGroupName(event.target.value)}
+              onChange={(event) => {
+                setGroupName(event.target.value);
+                if (groupError) {
+                  setGroupError(null);
+                }
+              }}
             />
           </label>
+          <div>
+            <span className="muted">Assign accounts</span>
+            <div className="chip-grid">
+              {accounts.length === 0 ? (
+                <span className="muted">Add an account first to assign it.</span>
+              ) : (
+                accounts.map((account) => {
+                  const isChecked = groupAccountIds.includes(account.id);
+                  return (
+                    <div key={account.id} className="chip">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() =>
+                          setGroupAccountIds((prev) =>
+                            prev.includes(account.id)
+                              ? prev.filter((id) => id !== account.id)
+                              : [...prev, account.id],
+                          )
+                        }
+                      />
+                      {account.name}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+          {groupError ? <p className="form-error">{groupError}</p> : null}
         </div>
+      </Modal>
+      <Modal
+        title="Delete group"
+        description="This removes the group and unassigns its accounts."
+        isOpen={isGroupDeleteOpen}
+        onClose={() => setIsGroupDeleteOpen(false)}
+        footer={
+          <>
+            <button className="pill" type="button" onClick={() => setIsGroupDeleteOpen(false)}>
+              Cancel
+            </button>
+            <button className="pill danger" type="button" onClick={handleDeleteGroup}>
+              Delete Group
+            </button>
+          </>
+        }
+      >
+        <p>
+          {groupDeleteTarget
+            ? `Delete "${groupDeleteTarget.name}"? This cannot be undone.`
+            : "Choose a group to delete."}
+        </p>
       </Modal>
       <Modal
         title="Add account"
@@ -485,17 +644,40 @@ export default function AccountsPage() {
         <div className="card">
           <h3>Groups</h3>
           <p className="muted">Bundle accounts for combined insights.</p>
-          <div className="chip-grid">
-            {groups.length === 0 ? (
-              <span className="chip">Ungrouped</span>
-            ) : (
-              groups.map((group) => (
-                <span key={group.id} className="chip">
-                  {group.name}
-                </span>
-              ))
-            )}
+          <div className="list-row list-header columns-3">
+            <span>Name</span>
+            <span>Accounts</span>
+            <span>Actions</span>
           </div>
+          {groups.length === 0 ? (
+            <div className="list-row columns-3 empty-state">
+              <span>Ungrouped</span>
+              <span>{ungroupedCount} account(s)</span>
+              <span className="muted">Create a group to organize accounts.</span>
+            </div>
+          ) : (
+            <>
+              <div className="list-row columns-3">
+                <span>Ungrouped</span>
+                <span>{ungroupedCount} account(s)</span>
+                <span className="muted">Default view</span>
+              </div>
+              {groups.map((group) => (
+                <div key={group.id} className="list-row columns-3">
+                  <span>{group.name}</span>
+                  <span>{groupAccountCounts[group.id] ?? 0} account(s)</span>
+                  <div className="row-actions">
+                    <button className="pill" type="button" onClick={() => openEditGroup(group)}>
+                      Edit
+                    </button>
+                    <button className="pill" type="button" onClick={() => openDeleteGroup(group)}>
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
           <button
             className="pill"
             onClick={() => setIsMembershipOpen(true)}

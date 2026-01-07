@@ -36,10 +36,11 @@ services:
       POSTGRES_USER: firecash
       POSTGRES_PASSWORD: firecash
       POSTGRES_DB: firecash
+      PGDATA: /var/lib/postgresql/18/docker
     ports:
       - "8801:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
 
 volumes:
   postgres_data:

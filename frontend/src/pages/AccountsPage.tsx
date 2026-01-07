@@ -1,11 +1,21 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
 import Modal from "../components/Modal";
 import { useSelection } from "../components/SelectionContext";
+import { get } from "../utils/apiClient";
+
+type Account = {
+  id: string;
+  name: string;
+  currency_code: string;
+};
+
+type AccountGroup = {
+  id: string;
+  name: string;
+};
 
 export default function AccountsPage() {
-  const groupOptions = ["Investments", "Cashflow", "Long Term"];
-  const accountOptions = ["Primary Account", "Retirement", "Vacation Fund", "HKD Growth"];
   const [toast, setToast] = useState<ActionToastData | null>(null);
   const { account: selectedAccount, group: selectedGroup } = useSelection();
   const [isGroupOpen, setIsGroupOpen] = useState(false);
@@ -14,24 +24,84 @@ export default function AccountsPage() {
   const [groupName, setGroupName] = useState("");
   const [accountName, setAccountName] = useState("");
   const [accountCurrency, setAccountCurrency] = useState("USD");
-  const [membershipGroup, setMembershipGroup] = useState(groupOptions[0]);
-  const [membershipAccount, setMembershipAccount] = useState(accountOptions[0]);
+  const [membershipGroup, setMembershipGroup] = useState("");
+  const [membershipAccount, setMembershipAccount] = useState("");
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [groups, setGroups] = useState<AccountGroup[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadData = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const [accountsResponse, groupsResponse] = await Promise.all([
+          get<Account[]>("/api/accounts"),
+          get<AccountGroup[]>("/api/account-groups"),
+        ]);
+        if (!isMounted) {
+          return;
+        }
+        setAccounts(accountsResponse);
+        setGroups(groupsResponse);
+        setMembershipAccount(accountsResponse[0]?.name ?? "");
+        setMembershipGroup(groupsResponse[0]?.name ?? "Ungrouped");
+      } catch (err) {
+        if (isMounted) {
+          setError("Unable to load accounts data.");
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+    loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
   };
 
-  const accountRows = [
-    { name: "Primary Account", currency: "USD", status: "Active", group: "Cashflow" },
-    { name: "Retirement", currency: "USD", status: "Active", group: "Investments" },
-    { name: "Vacation Fund", currency: "EUR", status: "Paused", group: "Cashflow" },
-    { name: "HKD Growth", currency: "HKD", status: "Active", group: "Investments" },
-  ];
-  const filteredAccounts = accountRows.filter(
-    (row) =>
-      (selectedAccount === "All Accounts" || row.name === selectedAccount) &&
-      (selectedGroup === "All Groups" || row.group === selectedGroup),
+  const accountRows = useMemo(
+    () =>
+      accounts.map((row) => ({
+        name: row.name,
+        currency: row.currency_code,
+        status: "Active",
+        group: "Ungrouped",
+      })),
+    [accounts],
   );
+
+  const filteredAccounts = accountRows.filter((row) => {
+    const matchesAccount = selectedAccount === "All Accounts" || row.name === selectedAccount;
+    const matchesGroup =
+      selectedGroup === "All Groups" ||
+      (selectedGroup === "Ungrouped" && row.group === "Ungrouped");
+    return matchesAccount && matchesGroup;
+  });
+
+  if (isLoading) {
+    return (
+      <section className="page">
+        <div className="card page-state">Loading accounts...</div>
+      </section>
+    );
+  }
+
+  if (error) {
+    return (
+      <section className="page">
+        <div className="card page-state error">{error}</div>
+      </section>
+    );
+  }
 
   return (
     <section className="page">
@@ -160,7 +230,9 @@ export default function AccountsPage() {
                 setIsMembershipOpen(false);
                 showToast(
                   "Membership updated",
-                  `${membershipAccount} added to ${membershipGroup}.`,
+                  membershipAccount && membershipGroup
+                    ? `${membershipAccount} added to ${membershipGroup}.`
+                    : "Membership updated.",
                 );
               }}
             >
@@ -176,7 +248,7 @@ export default function AccountsPage() {
               value={membershipGroup}
               onChange={(event) => setMembershipGroup(event.target.value)}
             >
-              {groupOptions.map((group) => (
+              {["Ungrouped", ...groups.map((group) => group.name)].map((group) => (
                 <option key={group} value={group}>
                   {group}
                 </option>
@@ -189,9 +261,9 @@ export default function AccountsPage() {
               value={membershipAccount}
               onChange={(event) => setMembershipAccount(event.target.value)}
             >
-              {accountOptions.map((account) => (
-                <option key={account} value={account}>
-                  {account}
+              {accounts.map((account) => (
+                <option key={account.id} value={account.name}>
+                  {account.name}
                 </option>
               ))}
             </select>
@@ -207,23 +279,31 @@ export default function AccountsPage() {
             <span>Currency</span>
             <span>Status</span>
           </div>
-          {filteredAccounts.map((row) => (
-            <div className="list-row columns-3" key={row.name}>
-              <span>{row.name}</span>
-              <span>{row.currency}</span>
-              <span className="status">{row.status}</span>
-            </div>
-          ))}
+          {filteredAccounts.length === 0 ? (
+            <div className="list-row columns-3 empty-state">No accounts available.</div>
+          ) : (
+            filteredAccounts.map((row) => (
+              <div className="list-row columns-3" key={row.name}>
+                <span>{row.name}</span>
+                <span>{row.currency}</span>
+                <span className="status">{row.status}</span>
+              </div>
+            ))
+          )}
         </div>
         <div className="card">
           <h3>Groups</h3>
           <p className="muted">Bundle accounts for combined insights.</p>
           <div className="chip-grid">
-            {groupOptions.map((group) => (
-              <span key={group} className="chip">
-                {group}
-              </span>
-            ))}
+            {groups.length === 0 ? (
+              <span className="chip">Ungrouped</span>
+            ) : (
+              groups.map((group) => (
+                <span key={group.id} className="chip">
+                  {group.name}
+                </span>
+              ))
+            )}
           </div>
           <button
             className="pill"

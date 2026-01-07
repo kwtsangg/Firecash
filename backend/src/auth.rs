@@ -3,7 +3,6 @@ use argon2::{
     Argon2, PasswordHash, PasswordHasher, PasswordVerifier,
 };
 use axum::{
-    async_trait,
     extract::{FromRequestParts, State},
     http::{request::Parts, StatusCode},
     Json,
@@ -46,35 +45,37 @@ pub struct AuthenticatedUser {
     pub id: Uuid,
 }
 
-#[async_trait]
 impl FromRequestParts<AppState> for AuthenticatedUser {
     type Rejection = (StatusCode, String);
 
-    async fn from_request_parts(
+    fn from_request_parts(
         parts: &mut Parts,
         state: &AppState,
-    ) -> Result<Self, Self::Rejection> {
-        let auth_header = parts
-            .headers
-            .get(axum::http::header::AUTHORIZATION)
-            .and_then(|value| value.to_str().ok())
-            .ok_or((StatusCode::UNAUTHORIZED, "Missing auth header".into()))?;
+    ) -> impl std::future::Future<Output = Result<Self, Self::Rejection>> + Send {
+        let jwt_secret = state.jwt_secret.clone();
+        async move {
+            let auth_header = parts
+                .headers
+                .get(axum::http::header::AUTHORIZATION)
+                .and_then(|value| value.to_str().ok())
+                .ok_or((StatusCode::UNAUTHORIZED, "Missing auth header".into()))?;
 
-        let token = auth_header
-            .strip_prefix("Bearer ")
-            .ok_or((StatusCode::UNAUTHORIZED, "Invalid auth header".into()))?;
+            let token = auth_header
+                .strip_prefix("Bearer ")
+                .ok_or((StatusCode::UNAUTHORIZED, "Invalid auth header".into()))?;
 
-        let claims = decode::<Claims>(
-            token,
-            &DecodingKey::from_secret(state.jwt_secret.as_bytes()),
-            &Validation::default(),
-        )
-        .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token".into()))?;
+            let claims = decode::<Claims>(
+                token,
+                &DecodingKey::from_secret(jwt_secret.as_bytes()),
+                &Validation::default(),
+            )
+            .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token".into()))?;
 
-        let id = Uuid::parse_str(&claims.claims.sub)
-            .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid user id".into()))?;
+            let id = Uuid::parse_str(&claims.claims.sub)
+                .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid user id".into()))?;
 
-        Ok(Self { id })
+            Ok(Self { id })
+        }
     }
 }
 

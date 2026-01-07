@@ -4,15 +4,18 @@ use serde::Deserialize;
 use sqlx::postgres::PgPool;
 use std::collections::HashMap;
 
+#[allow(dead_code)]
 const SUPPORTED_CURRENCIES: [&str; 5] = ["USD", "EUR", "GBP", "JPY", "HKD"];
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct FxResponse {
     base: String,
     date: String,
     rates: HashMap<String, f64>,
 }
 
+#[allow(dead_code)]
 pub async fn refresh_fx_rates(pool: &PgPool) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let client = Client::new();
     let symbols = SUPPORTED_CURRENCIES.join(",");

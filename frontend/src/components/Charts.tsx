@@ -186,15 +186,15 @@ export function LineChart({
             <line
               className="chart-crosshair"
               x1={activePoint.x}
-              y1="0"
+              y1={paddingY}
               x2={activePoint.x}
-              y2="100"
+              y2={100 - paddingY}
             />
             <line
-              className="chart-crosshair"
-              x1="0"
+              className="chart-crosshair chart-crosshair-horizontal"
+              x1={paddingX}
               y1={activePoint.y}
-              x2="100"
+              x2={100 - paddingX}
               y2={activePoint.y}
             />
             <circle

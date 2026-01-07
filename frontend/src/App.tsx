@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from "react-router-dom";
+import { RequireAuth } from "./components/AuthContext";
 import DashboardLayout from "./layouts/DashboardLayout";
 import AccountsPage from "./pages/AccountsPage";
 import DashboardPage from "./pages/DashboardPage";
@@ -14,7 +15,13 @@ export default function App() {
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
-      <Route element={<DashboardLayout />}>
+      <Route
+        element={
+          <RequireAuth>
+            <DashboardLayout />
+          </RequireAuth>
+        }
+      >
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/stocks" element={<StocksPage />} />
         <Route path="/transactions" element={<TransactionsPage />} />

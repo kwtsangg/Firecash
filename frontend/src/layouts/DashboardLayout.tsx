@@ -1,9 +1,10 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Selector } from "../components/Selectors";
 import { CurrencyProvider } from "../components/CurrencyContext";
 import { SelectionProvider } from "../components/SelectionContext";
 import { version } from "../../package.json";
+import { get } from "../utils/apiClient";
 
 const navigation = [
   { label: "Dashboard", to: "/dashboard" },
@@ -18,6 +19,49 @@ export default function DashboardLayout() {
   const [group, setGroup] = useState("All Groups");
   const [currency, setCurrency] = useState("USD");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [accountOptions, setAccountOptions] = useState<string[]>(["All Accounts"]);
+  const [groupOptions, setGroupOptions] = useState<string[]>(["All Groups"]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadFilters = async () => {
+      try {
+        const [accounts, groups] = await Promise.all([
+          get<{ name: string }[]>("/api/accounts"),
+          get<{ name: string }[]>("/api/account-groups"),
+        ]);
+        if (!isMounted) {
+          return;
+        }
+        setAccountOptions(["All Accounts", ...accounts.map((item) => item.name)]);
+        setGroupOptions(["All Groups", "Ungrouped", ...groups.map((item) => item.name)]);
+      } catch (error) {
+        if (isMounted) {
+          setAccountOptions(["All Accounts"]);
+          setGroupOptions(["All Groups", "Ungrouped"]);
+        }
+      }
+    };
+    loadFilters();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!accountOptions.includes(account)) {
+      setAccount("All Accounts");
+    }
+  }, [account, accountOptions]);
+
+  useEffect(() => {
+    if (!groupOptions.includes(group)) {
+      setGroup("All Groups");
+    }
+  }, [group, groupOptions]);
+
+  const stableAccountOptions = useMemo(() => accountOptions, [accountOptions]);
+  const stableGroupOptions = useMemo(() => groupOptions, [groupOptions]);
 
   return (
     <CurrencyProvider currency={currency} setCurrency={setCurrency}>
@@ -44,13 +88,13 @@ export default function DashboardLayout() {
               <Selector
                 label="Account"
                 value={account}
-                options={["All Accounts", "Primary Account", "Retirement", "Side Hustle"]}
+                options={stableAccountOptions}
                 onChange={setAccount}
               />
               <Selector
                 label="Group"
                 value={group}
-                options={["All Groups", "Investments", "Cashflow"]}
+                options={stableGroupOptions}
                 onChange={setGroup}
               />
               <Selector

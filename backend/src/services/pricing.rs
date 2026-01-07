@@ -3,6 +3,7 @@ use serde::Deserialize;
 use sqlx::{postgres::PgPool, QueryBuilder, Row};
 use std::collections::HashMap;
 use std::io::{Error as IoError, ErrorKind};
+use tracing::warn;
 use uuid::Uuid;
 
 #[derive(Deserialize)]
@@ -72,6 +73,15 @@ pub async fn refresh_asset_prices(
             .header(header::USER_AGENT, "firecash-api")
             .send()
             .await?;
+        if response.status() == reqwest::StatusCode::UNAUTHORIZED
+            || response.status() == reqwest::StatusCode::FORBIDDEN
+        {
+            warn!(
+                status = %response.status(),
+                "quote request unauthorized; skipping price refresh"
+            );
+            return Ok(updated);
+        }
         if !response.status().is_success() {
             return Err(Box::new(IoError::new(
                 ErrorKind::Other,

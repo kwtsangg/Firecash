@@ -51,6 +51,7 @@ export default function LoginPage() {
               placeholder="you@example.com"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
+              aria-describedby={error ? "login-error" : undefined}
               required
             />
           </label>
@@ -61,10 +62,15 @@ export default function LoginPage() {
               placeholder="••••••••"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
+              aria-describedby={error ? "login-error" : undefined}
               required
             />
           </label>
-          {error && <p className="form-error">{error}</p>}
+          {error && (
+            <p className="form-error" id="login-error">
+              {error}
+            </p>
+          )}
           <button className="pill primary" type="submit">
             {isSubmitting ? "Signing in..." : "Sign in"}
           </button>

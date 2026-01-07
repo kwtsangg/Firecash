@@ -767,9 +767,12 @@ export default function StocksPage() {
             <input
               type="date"
               value={holdingDate}
+              aria-describedby="holding-date-helper"
               onChange={(event) => setHoldingDate(event.target.value)}
             />
-            <span className="input-helper">{formatDateDisplay(holdingDate)}</span>
+            <span className="input-helper" id="holding-date-helper">
+              {formatDateDisplay(holdingDate)}
+            </span>
           </label>
           <label>
             Strategy

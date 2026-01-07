@@ -278,8 +278,8 @@ export default function DashboardPage() {
   }, 0);
 
   const linePoints = lineSeries.map((point) => point.value);
-  const maxValue = Math.max(...linePoints, 0);
-  const minValue = Math.min(...linePoints, 0);
+  const maxValue = linePoints.length > 0 ? Math.max(...linePoints) : 0;
+  const minValue = linePoints.length > 0 ? Math.min(...linePoints) : 0;
   const midpointValue = Math.round((maxValue + minValue) / 2);
   const axisYLabels = [
     formatCurrency(maxValue, displayCurrency),
@@ -302,7 +302,7 @@ export default function DashboardPage() {
     .filter((index, position, list) => list.indexOf(index) === position)
     .filter((index) => lineSeries[index])
     .map((index) => formatDateDisplay(lineSeries[index].date));
-  const tooltipDates = lineSeries.map((point) => formatDateDisplay(point.date));
+  const tooltipDates = lineSeries.map((point) => point.date);
 
   const hasHistory = lineSeries.length > 1 && lineSeries.some((point) => point.value !== 0);
   const growthValue = hasHistory
@@ -526,6 +526,35 @@ export default function DashboardPage() {
           footnote="Year to date"
         />
       </div>
+      <div className="card">
+        <h3>Quick actions</h3>
+        <div className="action-grid">
+          <button
+            className="pill"
+            onClick={() => showToast("Export queued", "CSV export will download shortly.")}
+          >
+            Export CSV
+          </button>
+          <button
+            className="pill"
+            onClick={() => showToast("Group creator ready", "Name your new group.")}
+          >
+            Create Group
+          </button>
+          <button
+            className="pill"
+            onClick={() => setIsBudgetOpen(true)}
+          >
+            Set Budget
+          </button>
+          <button
+            className="pill"
+            onClick={() => showToast("Snapshot shared", "Link copied to clipboard.")}
+          >
+            Share Snapshot
+          </button>
+        </div>
+      </div>
       <div className="card chart-card">
         <div className="chart-header">
           <div>
@@ -538,6 +567,7 @@ export default function DashboardPage() {
           <LineChart
             points={linePoints}
             labels={tooltipDates}
+            formatLabel={formatDateDisplay}
             formatValue={(value) => formatCurrency(value, displayCurrency)}
           />
           <div className="chart-axis-y">
@@ -570,35 +600,6 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
-        </div>
-      </div>
-      <div className="card">
-        <h3>Quick actions</h3>
-        <div className="action-grid">
-          <button
-            className="pill"
-            onClick={() => showToast("Export queued", "CSV export will download shortly.")}
-          >
-            Export CSV
-          </button>
-          <button
-            className="pill"
-            onClick={() => showToast("Group creator ready", "Name your new group.")}
-          >
-            Create Group
-          </button>
-          <button
-            className="pill"
-            onClick={() => setIsBudgetOpen(true)}
-          >
-            Set Budget
-          </button>
-          <button
-            className="pill"
-            onClick={() => showToast("Snapshot shared", "Link copied to clipboard.")}
-          >
-            Share Snapshot
-          </button>
         </div>
       </div>
       <div className="card list-card">

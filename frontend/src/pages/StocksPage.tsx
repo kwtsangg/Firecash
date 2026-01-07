@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
 import { BarChart, DonutChart, LineChart } from "../components/Charts";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
+import EmptyState from "../components/EmptyState";
 import KpiCard from "../components/KpiCard";
+import LoadingSkeleton from "../components/LoadingSkeleton";
 import Modal from "../components/Modal";
 import { useCurrency } from "../components/CurrencyContext";
 import { useSelection } from "../components/SelectionContext";
@@ -147,6 +149,7 @@ export default function StocksPage() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isFiltering, setIsFiltering] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -212,6 +215,15 @@ export default function StocksPage() {
   useEffect(() => {
     storeHoldingStrategies(holdingStrategies);
   }, [holdingStrategies]);
+
+  useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+    setIsFiltering(true);
+    const timer = window.setTimeout(() => setIsFiltering(false), 350);
+    return () => window.clearTimeout(timer);
+  }, [isLoading, range.from, range.to, selectedAccount, selectedGroup]);
 
   const accountOptions = useMemo(
     () => accounts.map((account) => account.name),
@@ -558,7 +570,7 @@ export default function StocksPage() {
   if (isLoading) {
     return (
       <section className="page">
-        <div className="card page-state">Loading stocks...</div>
+        <LoadingSkeleton label="Loading assets" lines={7} />
       </section>
     );
   }
@@ -924,24 +936,28 @@ export default function StocksPage() {
             Compare Benchmark
           </button>
         </div>
-        <div className="chart-surface chart-axis-surface">
-          <LineChart
-            points={performancePoints}
-            labels={tooltipDates}
-            formatLabel={formatDateDisplay}
-            formatValue={(value) => formatCurrency(value, displayCurrency)}
-          />
-          <div className="chart-axis-y">
-            {performanceYLabels.map((label) => (
-              <span key={label}>{label}</span>
-            ))}
+        {isFiltering ? (
+          <LoadingSkeleton label="Refreshing chart" lines={4} />
+        ) : (
+          <div className="chart-surface chart-axis-surface">
+            <LineChart
+              points={performancePoints}
+              labels={tooltipDates}
+              formatLabel={formatDateDisplay}
+              formatValue={(value) => formatCurrency(value, displayCurrency)}
+            />
+            <div className="chart-axis-y">
+              {performanceYLabels.map((label) => (
+                <span key={label}>{label}</span>
+              ))}
+            </div>
+            <div className="chart-axis-x">
+              {performanceXLabels.map((label, index) => (
+                <span key={`${label}-${index}`}>{label}</span>
+              ))}
+            </div>
           </div>
-          <div className="chart-axis-x">
-            {performanceXLabels.map((label, index) => (
-              <span key={`${label}-${index}`}>{label}</span>
-            ))}
-          </div>
-        </div>
+        )}
       </div>
       <div className="split-grid">
         <div className="card">
@@ -1021,8 +1037,16 @@ export default function StocksPage() {
           <span>Day Change</span>
           <span>Account</span>
         </div>
-        {filteredHoldings.length === 0 ? (
-          <div className="list-row columns-7 empty-state">No holdings available.</div>
+        {isFiltering ? (
+          <LoadingSkeleton label="Refreshing holdings" lines={6} />
+        ) : filteredHoldings.length === 0 ? (
+          <EmptyState
+            title={holdings.length === 0 ? "No holdings yet" : "No holdings match this view"}
+            description="Holdings track your assets, prices, and allocation across accounts."
+            actionLabel="Add holding"
+            actionHint="Add a stock or ETF position to start tracking."
+            onAction={() => setIsHoldingOpen(true)}
+          />
         ) : (
           filteredHoldings.map((row) => {
             const currentStrategy = holdingStrategies[row.id] ?? "Unassigned";
@@ -1200,8 +1224,16 @@ export default function StocksPage() {
           <span>Price</span>
           <span>Account</span>
         </div>
-        {filteredTrades.length === 0 ? (
-          <div className="list-row columns-6 empty-state">No trades recorded.</div>
+        {isFiltering ? (
+          <LoadingSkeleton label="Refreshing trades" lines={4} />
+        ) : filteredTrades.length === 0 ? (
+          <EmptyState
+            title={trades.length === 0 ? "No trades yet" : "No trades match this view"}
+            description="Trades show the most recent buys and sells across your portfolios."
+            actionLabel="Add holding"
+            actionHint="Add a holding to start generating trade history."
+            onAction={() => setIsHoldingOpen(true)}
+          />
         ) : (
           filteredTrades.map((trade) => (
             <div className="list-row columns-6" key={trade.id}>

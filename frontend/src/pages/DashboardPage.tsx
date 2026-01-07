@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
 import { BarChart, DonutChart, LineChart } from "../components/Charts";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
+import EmptyState from "../components/EmptyState";
 import KpiCard from "../components/KpiCard";
+import LoadingSkeleton from "../components/LoadingSkeleton";
 import Modal from "../components/Modal";
 import { useCurrency } from "../components/CurrencyContext";
 import { useSelection } from "../components/SelectionContext";
@@ -112,6 +114,7 @@ export default function DashboardPage() {
   const [priceStatus, setPriceStatus] = useState<AssetPriceStatus | null>(null);
   const [fxRates, setFxRates] = useState<FxRate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isFiltering, setIsFiltering] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const budgetCategories = ["Housing", "Investing", "Lifestyle", "Bills"];
@@ -188,6 +191,15 @@ export default function DashboardPage() {
       setCategories(readCategories());
     }
   }, [isTransactionOpen]);
+
+  useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+    setIsFiltering(true);
+    const timer = window.setTimeout(() => setIsFiltering(false), 350);
+    return () => window.clearTimeout(timer);
+  }, [isLoading, range.from, range.to, selectedAccount, selectedGroup]);
 
   const accountOptions = useMemo(
     () => accounts.map((item) => ({ id: item.id, name: item.name })),
@@ -417,7 +429,7 @@ export default function DashboardPage() {
   if (isLoading) {
     return (
       <section className="page">
-        <div className="card page-state">Loading dashboard data...</div>
+        <LoadingSkeleton label="Loading metrics" lines={7} />
       </section>
     );
   }
@@ -650,24 +662,28 @@ export default function DashboardPage() {
           </div>
           <DateRangePicker value={range} onChange={setRange} />
         </div>
-        <div className="chart-surface chart-axis-surface">
-          <LineChart
-            points={linePoints}
-            labels={tooltipDates}
-            formatLabel={formatDateDisplay}
-            formatValue={(value) => formatCurrency(value, displayCurrency)}
-          />
-          <div className="chart-axis-y">
-            {axisYLabels.map((label, index) => (
-              <span key={`${label}-${index}`}>{label}</span>
-            ))}
+        {isFiltering ? (
+          <LoadingSkeleton label="Refreshing asset growth" lines={4} />
+        ) : (
+          <div className="chart-surface chart-axis-surface">
+            <LineChart
+              points={linePoints}
+              labels={tooltipDates}
+              formatLabel={formatDateDisplay}
+              formatValue={(value) => formatCurrency(value, displayCurrency)}
+            />
+            <div className="chart-axis-y">
+              {axisYLabels.map((label, index) => (
+                <span key={`${label}-${index}`}>{label}</span>
+              ))}
+            </div>
+            <div className="chart-axis-x">
+              {axisXLabels.map((label, index) => (
+                <span key={`${label}-${index}`}>{label}</span>
+              ))}
+            </div>
           </div>
-          <div className="chart-axis-x">
-            {axisXLabels.map((label, index) => (
-              <span key={`${label}-${index}`}>{label}</span>
-            ))}
-          </div>
-        </div>
+        )}
       </div>
       <div className="split-grid">
         <div className="card">
@@ -720,8 +736,20 @@ export default function DashboardPage() {
           <span>Amount ({displayCurrency})</span>
           <span>Notes</span>
         </div>
-        {filteredTransactions.length === 0 ? (
-          <div className="list-row columns-6 empty-state">No transactions available.</div>
+        {isFiltering ? (
+          <LoadingSkeleton label="Refreshing activity" lines={6} />
+        ) : filteredTransactions.length === 0 ? (
+          <EmptyState
+            title={
+              transactions.length === 0
+                ? "No activity yet"
+                : "No activity matches this view"
+            }
+            description="Metrics summarize your cashflow and balances from recorded transactions."
+            actionLabel="Add transaction"
+            actionHint="Log a transaction to populate your metrics feed."
+            onAction={() => setIsTransactionOpen(true)}
+          />
         ) : (
           filteredTransactions.map((transaction) => (
             <div

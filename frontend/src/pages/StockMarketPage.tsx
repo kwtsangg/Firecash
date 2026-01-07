@@ -47,6 +47,11 @@ const OVERVIEW_SYMBOLS = [
   { label: "Dow 30 (DIA)", symbol: "DIA" },
 ];
 
+function getCandleAt(candles: Candle[], offsetFromEnd: number) {
+  const index = candles.length + offsetFromEnd;
+  return index >= 0 && index < candles.length ? candles[index] : undefined;
+}
+
 function currencyFromSymbol(symbol: string) {
   const normalized = symbol.toUpperCase();
   if (normalized.endsWith(".HK")) {
@@ -106,8 +111,8 @@ export default function StockMarketPage() {
           const response = await get<{ candles: Candle[] }>(
             `/api/assets/candles?symbol=${encodeURIComponent(item.symbol)}`,
           );
-          const latest = response.candles.at(-1);
-          const previous = response.candles.at(-2);
+          const latest = getCandleAt(response.candles, -1);
+          const previous = getCandleAt(response.candles, -2);
           const price = latest?.close ?? null;
           const change =
             latest && previous ? ((latest.close - previous.close) / previous.close) * 100 : null;

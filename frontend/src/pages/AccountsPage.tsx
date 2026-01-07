@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
+import EmptyState from "../components/EmptyState";
+import LoadingSkeleton from "../components/LoadingSkeleton";
 import Modal from "../components/Modal";
 import { useSelection } from "../components/SelectionContext";
 import Breadcrumbs from "../layouts/Breadcrumbs";
@@ -31,6 +33,7 @@ export default function AccountsPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [groups, setGroups] = useState<AccountGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isFiltering, setIsFiltering] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -65,6 +68,15 @@ export default function AccountsPage() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+    setIsFiltering(true);
+    const timer = window.setTimeout(() => setIsFiltering(false), 350);
+    return () => window.clearTimeout(timer);
+  }, [isLoading, selectedAccount, selectedGroup]);
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
@@ -155,7 +167,7 @@ export default function AccountsPage() {
   if (isLoading) {
     return (
       <section className="page">
-        <div className="card page-state">Loading accounts...</div>
+        <LoadingSkeleton label="Loading accounts" lines={6} />
       </section>
     );
   }
@@ -334,8 +346,20 @@ export default function AccountsPage() {
             <span>Currency</span>
             <span>Status</span>
           </div>
-          {filteredAccounts.length === 0 ? (
-            <div className="list-row columns-3 empty-state">No accounts available.</div>
+          {isFiltering ? (
+            <LoadingSkeleton label="Filtering accounts" lines={4} />
+          ) : filteredAccounts.length === 0 ? (
+            <EmptyState
+              title={
+                accounts.length === 0
+                  ? "No accounts yet"
+                  : "No accounts match this view"
+              }
+              description="Accounts store balances and power transactions, budgets, and performance insights."
+              actionLabel="Add account"
+              actionHint="Create your first account to begin tracking."
+              onAction={() => setIsAccountOpen(true)}
+            />
           ) : (
             filteredAccounts.map((row) => (
               <div className="list-row columns-3" key={row.name}>

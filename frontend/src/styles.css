@@ -679,6 +679,36 @@ textarea:focus-visible,
   font-style: italic;
 }
 
+.empty-state-card {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  background: rgba(15, 18, 30, 0.6);
+}
+
+.empty-state-copy h4 {
+  margin: 8px 0 6px;
+}
+
+.empty-state-label {
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.empty-state-action {
+  display: grid;
+  gap: 8px;
+}
+
+.empty-state-note {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .summary-row {
   font-weight: 600;
   border-bottom: none;
@@ -790,6 +820,44 @@ textarea:focus-visible,
   text-align: center;
   padding: 24px;
   color: #d5d9e8;
+}
+
+.loading-skeleton {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(22, 26, 44, 0.75);
+}
+
+.loading-skeleton-label {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.loading-skeleton-lines {
+  display: grid;
+  gap: 10px;
+}
+
+.loading-skeleton-line {
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.08));
+  background-size: 180% 100%;
+  animation: shimmer 1.6s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 0% 0;
+  }
+  100% {
+    background-position: 180% 0;
+  }
 }
 
 .page-state.error {

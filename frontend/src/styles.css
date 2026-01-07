@@ -178,7 +178,7 @@ a {
   margin-top: 20px;
   height: 220px;
   border-radius: 16px;
-  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -382,13 +382,13 @@ a {
 }
 
 .chart-grid-major {
-  stroke: rgba(255, 255, 255, 0.18);
-  stroke-width: 0.6;
+  stroke: rgba(255, 255, 255, 0.16);
+  stroke-width: 0.5;
 }
 
 .chart-grid-minor {
-  stroke: rgba(255, 255, 255, 0.08);
-  stroke-width: 0.4;
+  stroke: rgba(255, 255, 255, 0.06);
+  stroke-width: 0.35;
 }
 
 .candlestick-wick {
@@ -409,20 +409,59 @@ a {
 }
 
 .bar-chart {
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
+  position: relative;
   height: 180px;
   margin-top: 16px;
+  padding-left: 36px;
+  padding-bottom: 22px;
+}
+
+.bar-chart-grid {
+  position: absolute;
+  inset: 0 0 22px 36px;
+  pointer-events: none;
+}
+
+.bar-chart-grid .chart-grid-major,
+.bar-chart-grid .chart-grid-minor {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  display: block;
+}
+
+.bar-chart-axis {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 22px;
+  width: 32px;
+  pointer-events: none;
 }
 
 .bar-item {
   display: grid;
   gap: 8px;
   justify-items: center;
-  flex: 1;
   font-size: 12px;
   color: #9aa3ba;
+}
+
+.bar-chart-axis-label {
+  position: absolute;
+  right: 4px;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: #9aa3ba;
+}
+
+.bar-chart-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  height: 100%;
+  padding-left: 8px;
 }
 
 .bar-fill {

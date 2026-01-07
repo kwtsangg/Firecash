@@ -1,4 +1,4 @@
-import { get, put } from "../utils/apiClient";
+import { del, get, post, put } from "../utils/apiClient";
 
 export type AccountGroup = {
   id: string;
@@ -18,6 +18,20 @@ export async function fetchAccountGroupMemberships() {
   return get<AccountGroupMembership[]>("/api/account-groups/memberships");
 }
 
-export async function updateAccountGroup(groupId: string, accountIds: string[]) {
-  return put<AccountGroup>(`/api/account-groups/${groupId}`, { account_ids: accountIds });
+export async function createAccountGroup(name: string, accountIds: string[]) {
+  return post<AccountGroup>("/api/account-groups", {
+    name,
+    account_ids: accountIds,
+  });
+}
+
+export async function updateAccountGroup(
+  groupId: string,
+  data: { name?: string; account_ids?: string[] },
+) {
+  return put<AccountGroup>(`/api/account-groups/${groupId}`, data);
+}
+
+export async function deleteAccountGroup(groupId: string) {
+  return del(`/api/account-groups/${groupId}`);
 }

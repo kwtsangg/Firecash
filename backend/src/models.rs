@@ -108,6 +108,7 @@ pub struct RecurringTransaction {
     pub description: Option<String>,
     pub interval_days: i32,
     pub next_occurs_at: DateTime<Utc>,
+    pub is_enabled: bool,
 }
 
 #[derive(Deserialize)]
@@ -119,6 +120,7 @@ pub struct CreateRecurringTransactionRequest {
     pub description: Option<String>,
     pub interval_days: i32,
     pub next_occurs_at: DateTime<Utc>,
+    pub is_enabled: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -130,6 +132,7 @@ pub struct UpdateRecurringTransactionRequest {
     pub description: Option<String>,
     pub interval_days: Option<i32>,
     pub next_occurs_at: Option<DateTime<Utc>>,
+    pub is_enabled: Option<bool>,
 }
 
 #[derive(Serialize, FromRow)]
@@ -142,6 +145,7 @@ pub struct UpdateRecurringTransactionResponse {
     pub description: Option<String>,
     pub interval_days: i32,
     pub next_occurs_at: DateTime<Utc>,
+    pub is_enabled: bool,
 }
 
 #[derive(Serialize, FromRow)]

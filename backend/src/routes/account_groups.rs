@@ -46,7 +46,7 @@ pub async fn list_account_groups(
     Ok(Json(records))
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, sqlx::FromRow)]
 pub struct AccountGroupMembership {
     pub group_id: Uuid,
     pub account_id: Uuid,

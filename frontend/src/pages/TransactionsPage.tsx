@@ -20,6 +20,7 @@ import {
   toDateInputValue,
   toIsoDateTime,
 } from "../utils/date";
+import { getFriendlyErrorMessage } from "../utils/errorMessages";
 import { pageTitles } from "../utils/pageTitles";
 
 type Account = {
@@ -56,6 +57,7 @@ type RecurringTransaction = {
   description: string | null;
   interval_days: number;
   next_occurs_at: string;
+  is_enabled: boolean;
 };
 
 type TransactionRow = {
@@ -85,6 +87,19 @@ export default function TransactionsPage() {
   const [categories, setCategories] = useState<string[]>([]);
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
+  const [isRecurringOpen, setIsRecurringOpen] = useState(false);
+  const [recurringEditingId, setRecurringEditingId] = useState<string | null>(null);
+  const [recurringAccount, setRecurringAccount] = useState("");
+  const [recurringAmount, setRecurringAmount] = useState("");
+  const [recurringCurrency, setRecurringCurrency] = useState("USD");
+  const [recurringType, setRecurringType] = useState("Income");
+  const [recurringDescription, setRecurringDescription] = useState("");
+  const [recurringInterval, setRecurringInterval] = useState("30");
+  const [recurringNextDate, setRecurringNextDate] = useState(() => toDateInputValue(new Date()));
+  const [recurringIsEnabled, setRecurringIsEnabled] = useState(true);
+  const [recurringError, setRecurringError] = useState<string | null>(null);
+  const [isRecurringSaving, setIsRecurringSaving] = useState(false);
+  const [recurringActionIds, setRecurringActionIds] = useState<Set<string>>(new Set());
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [groups, setGroups] = useState<AccountGroup[]>([]);
   const [memberships, setMemberships] = useState<AccountGroupMembership[]>([]);
@@ -126,6 +141,7 @@ export default function TransactionsPage() {
         setMemberships(membershipResponse);
         setRecurringTransactions(recurringResponse);
         setTransactionAccount(accountsResponse[0]?.id ?? "");
+        setRecurringAccount(accountsResponse[0]?.id ?? "");
         setTransactions(
           transactionsResponse.map((transaction) => ({
             id: transaction.id,
@@ -404,6 +420,185 @@ export default function TransactionsPage() {
     }
   };
 
+  const openCreateRecurring = () => {
+    setRecurringEditingId(null);
+    setRecurringAccount(accounts[0]?.id ?? "");
+    setRecurringAmount("");
+    setRecurringCurrency(transactionCurrency);
+    setRecurringType("Income");
+    setRecurringDescription("");
+    setRecurringInterval("30");
+    setRecurringNextDate(toDateInputValue(new Date()));
+    setRecurringIsEnabled(true);
+    setRecurringError(null);
+    setIsRecurringOpen(true);
+  };
+
+  const openEditRecurring = (row: RecurringTransaction) => {
+    setRecurringEditingId(row.id);
+    setRecurringAccount(row.account_id);
+    setRecurringAmount(String(row.amount));
+    setRecurringCurrency(row.currency_code);
+    setRecurringType(row.transaction_type === "income" ? "Income" : "Expense");
+    setRecurringDescription(row.description ?? "");
+    setRecurringInterval(String(row.interval_days));
+    setRecurringNextDate(row.next_occurs_at.split("T")[0]);
+    setRecurringIsEnabled(row.is_enabled);
+    setRecurringError(null);
+    setIsRecurringOpen(true);
+  };
+
+  const handleSaveRecurring = async () => {
+    const amount = Number(recurringAmount);
+    if (!amount) {
+      setRecurringError("Enter a recurring amount.");
+      return;
+    }
+    const intervalDays = Number(recurringInterval);
+    if (!intervalDays || intervalDays <= 0) {
+      setRecurringError("Set a valid cadence in days.");
+      return;
+    }
+    if (!recurringAccount) {
+      setRecurringError("Select an account for this schedule.");
+      return;
+    }
+    setRecurringError(null);
+    setIsRecurringSaving(true);
+    const payload = {
+      account_id: recurringAccount,
+      amount,
+      currency_code: recurringCurrency,
+      transaction_type: recurringType.toLowerCase(),
+      description: recurringDescription.trim() ? recurringDescription.trim() : null,
+      interval_days: intervalDays,
+      next_occurs_at: toIsoDateTime(recurringNextDate),
+      is_enabled: recurringIsEnabled,
+    };
+    const isEdit = Boolean(recurringEditingId);
+    const tempId = `temp-${Date.now()}`;
+    const optimisticRow: RecurringTransaction = {
+      id: tempId,
+      account_id: recurringAccount,
+      amount,
+      currency_code: recurringCurrency,
+      transaction_type: payload.transaction_type,
+      description: payload.description,
+      interval_days: intervalDays,
+      next_occurs_at: payload.next_occurs_at,
+      is_enabled: recurringIsEnabled,
+    };
+    const previous = recurringTransactions;
+    if (!isEdit) {
+      setRecurringTransactions((prev) => [optimisticRow, ...prev]);
+    }
+    setIsRecurringOpen(false);
+    try {
+      const saved = isEdit
+        ? await put<RecurringTransaction>(
+            `/api/recurring-transactions/${recurringEditingId}`,
+            payload,
+          )
+        : await post<RecurringTransaction>("/api/recurring-transactions", payload);
+      if (isEdit) {
+        setRecurringTransactions((prev) =>
+          prev.map((row) => (row.id === saved.id ? saved : row)),
+        );
+      } else {
+        setRecurringTransactions((prev) =>
+          prev.map((row) => (row.id === tempId ? saved : row)),
+        );
+      }
+      showToast(
+        isEdit ? "Recurring updated" : "Recurring scheduled",
+        isEdit ? "Schedule saved successfully." : "Schedule created successfully.",
+      );
+    } catch (err) {
+      setRecurringTransactions(previous);
+      setRecurringError(getFriendlyErrorMessage(err, "Unable to save this schedule."));
+      setIsRecurringOpen(true);
+    } finally {
+      setIsRecurringSaving(false);
+    }
+  };
+
+  const setRecurringActionLoading = (id: string, isLoading: boolean) => {
+    setRecurringActionIds((prev) => {
+      const next = new Set(prev);
+      if (isLoading) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleRecurring = async (row: RecurringTransaction) => {
+    setRecurringActionLoading(row.id, true);
+    try {
+      const updated = await put<RecurringTransaction>(
+        `/api/recurring-transactions/${row.id}`,
+        { is_enabled: !row.is_enabled },
+      );
+      setRecurringTransactions((prev) =>
+        prev.map((item) => (item.id === row.id ? updated : item)),
+      );
+      showToast(
+        updated.is_enabled ? "Recurring enabled" : "Recurring paused",
+        updated.is_enabled
+          ? "This schedule will run again."
+          : "Payments are paused until you re-enable.",
+      );
+    } catch (err) {
+      showToast(
+        "Update failed",
+        getFriendlyErrorMessage(err, "Unable to update this schedule."),
+      );
+    } finally {
+      setRecurringActionLoading(row.id, false);
+    }
+  };
+
+  const handleSkipRecurring = async (row: RecurringTransaction) => {
+    setRecurringActionLoading(row.id, true);
+    try {
+      const updated = await post<RecurringTransaction>(
+        `/api/recurring-transactions/${row.id}/skip`,
+        {},
+      );
+      setRecurringTransactions((prev) =>
+        prev.map((item) => (item.id === row.id ? updated : item)),
+      );
+      showToast("Occurrence skipped", "Next occurrence moved forward.");
+    } catch (err) {
+      showToast(
+        "Skip failed",
+        getFriendlyErrorMessage(err, "Unable to skip this occurrence."),
+      );
+    } finally {
+      setRecurringActionLoading(row.id, false);
+    }
+  };
+
+  const handleDeleteRecurring = async (row: RecurringTransaction) => {
+    setRecurringActionLoading(row.id, true);
+    const previous = recurringTransactions;
+    setRecurringTransactions((prev) => prev.filter((item) => item.id !== row.id));
+    try {
+      await del(`/api/recurring-transactions/${row.id}`);
+      showToast("Recurring deleted", "Schedule removed.");
+    } catch (err) {
+      setRecurringTransactions(previous);
+      showToast(
+        "Delete failed",
+        getFriendlyErrorMessage(err, "Unable to delete this schedule."),
+      );
+    } finally {
+      setRecurringActionLoading(row.id, false);
+    }
+  };
+
   if (isLoading) {
     return (
       <section className="page">
@@ -554,6 +749,119 @@ export default function TransactionsPage() {
         </div>
       </Modal>
       <Modal
+        title={recurringEditingId ? "Edit recurring schedule" : "Schedule recurring"}
+        description="Automate income, subscriptions, or transfers with a cadence."
+        isOpen={isRecurringOpen}
+        onClose={() => setIsRecurringOpen(false)}
+        footer={
+          <>
+            <button className="pill" type="button" onClick={() => setIsRecurringOpen(false)}>
+              Cancel
+            </button>
+            <button
+              className="pill primary"
+              type="button"
+              onClick={handleSaveRecurring}
+              disabled={isRecurringSaving}
+            >
+              {isRecurringSaving ? "Saving..." : "Save Schedule"}
+            </button>
+          </>
+        }
+      >
+        <div className="form-grid">
+          <label>
+            Account
+            <select
+              value={recurringAccount}
+              onChange={(event) => setRecurringAccount(event.target.value)}
+            >
+              {accountOptions.length === 0 ? (
+                <option value="" disabled>
+                  No accounts available
+                </option>
+              ) : (
+                accountOptions.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
+          <label>
+            Type
+            <select
+              value={recurringType}
+              onChange={(event) => setRecurringType(event.target.value)}
+            >
+              {["Income", "Expense"].map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Amount
+            <input
+              type="number"
+              placeholder="0.00"
+              value={recurringAmount}
+              onChange={(event) => setRecurringAmount(event.target.value)}
+            />
+          </label>
+          <label>
+            Currency
+            <select
+              value={recurringCurrency}
+              onChange={(event) => setRecurringCurrency(event.target.value)}
+            >
+              {supportedCurrencies.map((currencyOption) => (
+                <option key={currencyOption} value={currencyOption}>
+                  {currencyOption}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Description
+            <input
+              type="text"
+              placeholder="Rent, payroll, subscription"
+              value={recurringDescription}
+              onChange={(event) => setRecurringDescription(event.target.value)}
+            />
+          </label>
+          <label>
+            Cadence (days)
+            <input
+              type="number"
+              min="1"
+              value={recurringInterval}
+              onChange={(event) => setRecurringInterval(event.target.value)}
+            />
+          </label>
+          <label>
+            Next occurrence
+            <input
+              type="date"
+              value={recurringNextDate}
+              onChange={(event) => setRecurringNextDate(event.target.value)}
+            />
+          </label>
+          <label>
+            Enabled
+            <input
+              type="checkbox"
+              checked={recurringIsEnabled}
+              onChange={(event) => setRecurringIsEnabled(event.target.checked)}
+            />
+          </label>
+          {recurringError ? <p className="form-error">{recurringError}</p> : null}
+        </div>
+      </Modal>
+      <Modal
         title="Confirm transaction changes"
         description="Review the edits before applying."
         isOpen={isReviewOpen}
@@ -620,28 +928,71 @@ export default function TransactionsPage() {
           </div>
           <button
             className="pill primary"
-            onClick={() => showToast("Schedule opened", "Choose cadence and amount.")}
+            onClick={openCreateRecurring}
           >
             Schedule recurring
           </button>
         </div>
-        <div className="list-row list-header columns-4">
+        <div className="list-row list-header columns-5">
           <span>Name</span>
           <span>Cadence</span>
           <span>Next run</span>
           <span>Status</span>
+          <span>Actions</span>
         </div>
         {recurringTransactions.length === 0 ? (
-          <div className="list-row columns-4 empty-state">No recurring schedules.</div>
+          <div className="list-row columns-5 empty-state">No recurring schedules.</div>
         ) : (
-          recurringTransactions.map((row) => (
-            <div className="list-row columns-4" key={row.id}>
-              <span>{row.description ?? "Recurring transaction"}</span>
-              <span>{`Every ${row.interval_days} days`}</span>
-              <span>{formatDateDisplay(row.next_occurs_at)}</span>
-              <span className="status">Active</span>
-            </div>
-          ))
+          recurringTransactions.map((row) => {
+            const isBusy = recurringActionIds.has(row.id);
+            return (
+              <div className="list-row columns-5" key={row.id}>
+                <span>
+                  {row.description ?? "Recurring transaction"}{" "}
+                  <span className="muted">
+                    · {formatCurrency(row.amount, row.currency_code)}
+                  </span>
+                </span>
+                <span>{`Every ${row.interval_days} days`}</span>
+                <span>{formatDateDisplay(row.next_occurs_at)}</span>
+                <span className="status">{row.is_enabled ? "Active" : "Paused"}</span>
+                <div className="row-actions">
+                  <button
+                    className="pill"
+                    type="button"
+                    onClick={() => openEditRecurring(row)}
+                    disabled={isBusy}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className="pill"
+                    type="button"
+                    onClick={() => handleSkipRecurring(row)}
+                    disabled={isBusy}
+                  >
+                    Skip next
+                  </button>
+                  <button
+                    className="pill"
+                    type="button"
+                    onClick={() => handleToggleRecurring(row)}
+                    disabled={isBusy}
+                  >
+                    {row.is_enabled ? "Disable" : "Enable"}
+                  </button>
+                  <button
+                    className="pill danger"
+                    type="button"
+                    onClick={() => handleDeleteRecurring(row)}
+                    disabled={isBusy}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            );
+          })
         )}
       </div>
       <div className="card list-card">

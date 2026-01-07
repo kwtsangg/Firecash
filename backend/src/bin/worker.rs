@@ -54,6 +54,7 @@ async fn refresh_recurring_transactions(pool: &sqlx::PgPool) -> Result<(), sqlx:
                    interval_days, next_occurs_at
             FROM recurring_transactions
             WHERE next_occurs_at <= NOW()
+              AND is_enabled = TRUE
             FOR UPDATE SKIP LOCKED
         ),
         inserted AS (

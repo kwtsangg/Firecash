@@ -29,9 +29,6 @@ export default function Modal({
             <h3>{title}</h3>
             {description && <p className="muted">{description}</p>}
           </div>
-          <button className="pill" type="button" onClick={onClose}>
-            Close
-          </button>
         </div>
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-footer">{footer}</div>}

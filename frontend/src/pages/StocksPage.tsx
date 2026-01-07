@@ -13,15 +13,23 @@ type Holding = {
   change: number;
   currency: string;
   account: string;
+  entryDate: string;
 };
 
 export default function StocksPage() {
+  const accountOptions = ["Primary Account", "Retirement", "HKD Growth"];
+  const supportedTickers = new Set(["AAPL", "TSLA", "0700.HK", "MSFT", "NVDA"]);
   const [toast, setToast] = useState<ActionToastData | null>(null);
   const [range, setRange] = useState<DateRange>({
     from: "2024-01-01",
     to: "2024-04-30",
   });
   const [isHoldingOpen, setIsHoldingOpen] = useState(false);
+  const [holdingTicker, setHoldingTicker] = useState("");
+  const [holdingShares, setHoldingShares] = useState("");
+  const [holdingPrice, setHoldingPrice] = useState("");
+  const [holdingDate, setHoldingDate] = useState("2024-04-20");
+  const [holdingAccount, setHoldingAccount] = useState(accountOptions[0]);
   const [holdings, setHoldings] = useState<Holding[]>([
     {
       ticker: "AAPL",
@@ -31,6 +39,7 @@ export default function StocksPage() {
       change: 1.4,
       currency: "USD",
       account: "Primary Account",
+      entryDate: "2024-01-15",
     },
     {
       ticker: "TSLA",
@@ -40,6 +49,7 @@ export default function StocksPage() {
       change: -0.6,
       currency: "USD",
       account: "Investments",
+      entryDate: "2024-02-11",
     },
     {
       ticker: "0700.HK",
@@ -49,6 +59,7 @@ export default function StocksPage() {
       change: 0.9,
       currency: "HKD",
       account: "HKD Growth",
+      entryDate: "2024-03-03",
     },
   ]);
 
@@ -152,8 +163,36 @@ export default function StocksPage() {
               className="pill primary"
               type="button"
               onClick={() => {
+                const normalizedTicker = holdingTicker.trim().toUpperCase();
+                if (!normalizedTicker || !supportedTickers.has(normalizedTicker)) {
+                  showToast("Ticker not found", "Select a supported symbol to continue.");
+                  return;
+                }
+                const shares = Number(holdingShares);
+                const price = Number(holdingPrice);
+                if (!shares || !price) {
+                  showToast("Missing details", "Enter shares and price to save.");
+                  return;
+                }
+                setHoldings((prev) => [
+                  {
+                    ticker: normalizedTicker,
+                    shares,
+                    avgEntry: price,
+                    price,
+                    change: 0,
+                    currency: normalizedTicker.endsWith(".HK") ? "HKD" : "USD",
+                    account: holdingAccount,
+                    entryDate: holdingDate,
+                  },
+                  ...prev,
+                ]);
                 setIsHoldingOpen(false);
-                showToast("Holding saved", "Your position has been added.");
+                setHoldingTicker("");
+                setHoldingShares("");
+                setHoldingPrice("");
+                setHoldingDate("2024-04-20");
+                showToast("Holding saved", `Added ${normalizedTicker} to ${holdingAccount}.`);
               }}
             >
               Save Holding
@@ -164,19 +203,51 @@ export default function StocksPage() {
         <div className="form-grid">
           <label>
             Ticker
-            <input type="text" placeholder="AAPL" />
+            <input
+              type="text"
+              placeholder="AAPL"
+              value={holdingTicker}
+              onChange={(event) => setHoldingTicker(event.target.value)}
+            />
           </label>
           <label>
             Shares
-            <input type="number" placeholder="0" />
+            <input
+              type="number"
+              placeholder="0"
+              value={holdingShares}
+              onChange={(event) => setHoldingShares(event.target.value)}
+            />
           </label>
           <label>
-            Avg entry price
-            <input type="number" placeholder="0.00" />
+            Price
+            <input
+              type="number"
+              placeholder="0.00"
+              value={holdingPrice}
+              onChange={(event) => setHoldingPrice(event.target.value)}
+            />
           </label>
           <label>
             Account
-            <input type="text" placeholder="Primary Account" />
+            <select
+              value={holdingAccount}
+              onChange={(event) => setHoldingAccount(event.target.value)}
+            >
+              {accountOptions.map((account) => (
+                <option key={account} value={account}>
+                  {account}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Purchase date
+            <input
+              type="date"
+              value={holdingDate}
+              onChange={(event) => setHoldingDate(event.target.value)}
+            />
           </label>
         </div>
       </Modal>

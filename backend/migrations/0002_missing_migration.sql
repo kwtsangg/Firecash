@@ -1,0 +1,3 @@
+-- Placeholder migration to satisfy existing _sqlx_migrations entry.
+-- No schema changes are required; this file ensures sqlx does not fail
+-- when a database already contains version 2.

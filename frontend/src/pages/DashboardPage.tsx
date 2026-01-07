@@ -800,7 +800,10 @@ export default function DashboardPage() {
               labels={tooltipDates}
               formatLabel={formatDateDisplay}
               formatValue={(value) => formatCurrency(value, displayCurrency)}
+              showAxisLabels={false}
             />
+            <span className="chart-axis-title y">Value</span>
+            <span className="chart-axis-title x">Date</span>
             <div className="chart-axis-y">
               {axisYLabels.map((label, index) => (
                 <span key={`${label}-${index}`}>{label}</span>
@@ -818,7 +821,10 @@ export default function DashboardPage() {
         <div className="card">
           <h3>Weekly Cashflow</h3>
           <p className="muted">Income vs expenses snapshot.</p>
-          <BarChart values={barValues} />
+          <BarChart
+            values={barValues}
+            formatValue={(value) => formatCurrency(value, displayCurrency)}
+          />
         </div>
         <div className="card">
           <h3>Allocation</h3>

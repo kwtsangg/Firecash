@@ -7,6 +7,7 @@ type LineChartProps = {
   formatLabel?: (label: string) => string;
   xLabels?: { label: string; position: number }[];
   yLabels?: { label: string; position: number }[];
+  showAxisLabels?: boolean;
 };
 
 export function LineChart({
@@ -16,10 +17,12 @@ export function LineChart({
   formatLabel,
   xLabels = [],
   yLabels = [],
+  showAxisLabels = true,
 }: LineChartProps) {
   if (points.length === 0) {
     return <div className="chart-empty">No data</div>;
   }
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [hoverRatio, setHoverRatio] = useState<number | null>(null);
   const max = Math.max(...points);
   const min = Math.min(...points);
@@ -148,8 +151,27 @@ export function LineChart({
     setHoverRatio(null);
   };
 
+  const tooltipStyle = useMemo(() => {
+    if (!wrapperRef.current || !activePoint) {
+      return undefined;
+    }
+    const rect = wrapperRef.current.getBoundingClientRect();
+    const left = (activePoint.x / 100) * rect.width;
+    const top = (activePoint.y / 100) * rect.height;
+    const maxLeft = rect.width - 120;
+    const clampedLeft = Math.min(Math.max(left, 120), Math.max(maxLeft, 120));
+    return {
+      left: `${clampedLeft}px`,
+      top: `${top}px`,
+    };
+  }, [activePoint]);
+
+  const areaPath = `${path} L ${paddingX + plotWidth} ${100 - paddingY} L ${paddingX} ${
+    100 - paddingY
+  } Z`;
+
   return (
-    <div className="line-chart">
+    <div className="line-chart" ref={wrapperRef}>
       <svg
         viewBox="0 0 100 100"
         className="chart-svg"
@@ -199,7 +221,14 @@ export function LineChart({
             />
           ))}
         </g>
-        <path d={path} fill="none" stroke="url(#lineGradient)" strokeWidth="3" />
+        <path d={areaPath} fill="url(#lineAreaGradient)" opacity="0.35" />
+        <path
+          d={path}
+          fill="none"
+          stroke="url(#lineGradient)"
+          strokeWidth="3"
+          strokeLinecap="round"
+        />
         {activePoint ? (
           <g className="chart-crosshair-group">
             <line
@@ -224,39 +253,47 @@ export function LineChart({
             />
           </g>
         ) : null}
-        {resolvedYLabels.map((item, index) => (
-          <text
-            key={`y-${item.label}-${index}`}
-            x="2"
-            y={item.position}
-            className="chart-axis-text"
-            textAnchor="start"
-          >
-            {item.label}
-          </text>
-        ))}
-        {resolvedXLabels.map((item, index) => (
-          <text
-            key={`x-${item.label}-${index}`}
-            x={item.position}
-            y="98"
-            className="chart-axis-text"
-            textAnchor="middle"
-          >
-            {item.label}
-          </text>
-        ))}
+        {showAxisLabels
+          ? resolvedYLabels.map((item, index) => (
+              <text
+                key={`y-${item.label}-${index}`}
+                x="2"
+                y={item.position}
+                className="chart-axis-text"
+                textAnchor="start"
+              >
+                {item.label}
+              </text>
+            ))
+          : null}
+        {showAxisLabels
+          ? resolvedXLabels.map((item, index) => (
+              <text
+                key={`x-${item.label}-${index}`}
+                x={item.position}
+                y="98"
+                className="chart-axis-text"
+                textAnchor="middle"
+              >
+                {item.label}
+              </text>
+            ))
+          : null}
         <defs>
           <linearGradient id="lineGradient" x1="0" x2="1" y1="0" y2="0">
             <stop offset="0%" stopColor="#7f5bff" />
             <stop offset="100%" stopColor="#5b6cff" />
+          </linearGradient>
+          <linearGradient id="lineAreaGradient" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="#7f5bff" />
+            <stop offset="100%" stopColor="#1b1f36" stopOpacity="0.2" />
           </linearGradient>
         </defs>
       </svg>
       {activePoint && tooltipValue ? (
         <div
           className="chart-tooltip"
-          style={{ left: `${activePoint.x}%`, top: `${activePoint.y}%` }}
+          style={tooltipStyle ?? { left: `${activePoint.x}%`, top: `${activePoint.y}%` }}
         >
           {tooltipLabel ? <div className="chart-tooltip-label">{tooltipLabel}</div> : null}
           <div className="chart-tooltip-value">{tooltipValue}</div>
@@ -268,9 +305,17 @@ export function LineChart({
 
 type BarChartProps = {
   values: { label: string; value: number }[];
+  formatValue?: (value: number) => string;
 };
 
-export function BarChart({ values }: BarChartProps) {
+export function BarChart({ values, formatValue }: BarChartProps) {
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const [hovered, setHovered] = useState<{
+    label: string;
+    value: number;
+    x: number;
+    y: number;
+  } | null>(null);
   const max = Math.max(...values.map((item) => item.value), 1);
   const majorYCount = 5;
   const minorPerMajor = 1;
@@ -291,7 +336,7 @@ export function BarChart({ values }: BarChartProps) {
     return { label: value.toFixed(0), position };
   });
   return (
-    <div className="bar-chart">
+    <div className="bar-chart" ref={wrapperRef}>
       <div className="bar-chart-grid">
         {majorTicks.map((tick, index) => (
           <span
@@ -321,7 +366,23 @@ export function BarChart({ values }: BarChartProps) {
       </div>
       <div className="bar-chart-bars">
         {values.map((item) => (
-          <div key={item.label} className="bar-item">
+          <div
+            key={item.label}
+            className="bar-item"
+            onMouseLeave={() => setHovered(null)}
+            onMouseMove={(event) => {
+              if (!wrapperRef.current) {
+                return;
+              }
+              const rect = wrapperRef.current.getBoundingClientRect();
+              setHovered({
+                label: item.label,
+                value: item.value,
+                x: event.clientX - rect.left,
+                y: event.clientY - rect.top,
+              });
+            }}
+          >
             <div
               className="bar-fill"
               style={{ height: `${(item.value / max) * 100}%` }}
@@ -330,6 +391,17 @@ export function BarChart({ values }: BarChartProps) {
           </div>
         ))}
       </div>
+      {hovered ? (
+        <div
+          className="bar-tooltip"
+          style={{ left: hovered.x, top: hovered.y }}
+        >
+          <div className="bar-tooltip-label">{hovered.label}</div>
+          <div className="bar-tooltip-value">
+            {formatValue ? formatValue(hovered.value) : hovered.value.toFixed(2)}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -346,16 +418,19 @@ type CandlestickChartProps = {
   candles: Candle[];
   formatValue?: (value: number) => string;
   formatLabel?: (label: string) => string;
+  showAxisLabels?: boolean;
 };
 
 export function CandlestickChart({
   candles,
   formatValue,
   formatLabel,
+  showAxisLabels = true,
 }: CandlestickChartProps) {
   if (candles.length === 0) {
     return <div className="chart-empty">No data</div>;
   }
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const values = candles.flatMap((candle) => [candle.low, candle.high]);
   const max = Math.max(...values);
@@ -439,8 +514,23 @@ export function CandlestickChart({
     return { candle, label, x, y };
   }, [candles, formatLabel, hoverIndex, hoverState]);
 
+  const tooltipStyle = useMemo(() => {
+    if (!wrapperRef.current || !tooltip) {
+      return undefined;
+    }
+    const rect = wrapperRef.current.getBoundingClientRect();
+    const left = (tooltip.x / 100) * rect.width;
+    const top = (tooltip.y / 100) * rect.height;
+    const maxLeft = rect.width - 140;
+    const clampedLeft = Math.min(Math.max(left, 140), Math.max(maxLeft, 140));
+    return {
+      left: `${clampedLeft}px`,
+      top: `${top}px`,
+    };
+  }, [tooltip]);
+
   return (
-    <div className="line-chart">
+    <div className="line-chart" ref={wrapperRef}>
       <svg
         viewBox="0 0 100 100"
         className="chart-svg"
@@ -558,33 +648,37 @@ export function CandlestickChart({
             />
           </g>
         ) : null}
-        {defaultYLabels.map((item, index) => (
-          <text
-            key={`y-${item.label}-${index}`}
-            x="2"
-            y={item.position}
-            className="chart-axis-text"
-            textAnchor="start"
-          >
-            {item.label}
-          </text>
-        ))}
-        {defaultXLabels.map((item, index) => (
-          <text
-            key={`x-${item.label}-${index}`}
-            x={item.position}
-            y="98"
-            className="chart-axis-text"
-            textAnchor="middle"
-          >
-            {item.label}
-          </text>
-        ))}
+        {showAxisLabels
+          ? defaultYLabels.map((item, index) => (
+              <text
+                key={`y-${item.label}-${index}`}
+                x="2"
+                y={item.position}
+                className="chart-axis-text"
+                textAnchor="start"
+              >
+                {item.label}
+              </text>
+            ))
+          : null}
+        {showAxisLabels
+          ? defaultXLabels.map((item, index) => (
+              <text
+                key={`x-${item.label}-${index}`}
+                x={item.position}
+                y="98"
+                className="chart-axis-text"
+                textAnchor="middle"
+              >
+                {item.label}
+              </text>
+            ))
+          : null}
       </svg>
       {tooltip ? (
         <div
           className="chart-tooltip"
-          style={{ left: `${tooltip.x}%`, top: `${tooltip.y}%` }}
+          style={tooltipStyle ?? { left: `${tooltip.x}%`, top: `${tooltip.y}%` }}
         >
           <div className="chart-tooltip-label">{tooltip.label}</div>
           <div className="chart-tooltip-value">

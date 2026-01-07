@@ -51,6 +51,7 @@ export default function RegisterPage() {
               placeholder="Jane Doe"
               value={name}
               onChange={(event) => setName(event.target.value)}
+              aria-describedby={error ? "register-error" : undefined}
               required
             />
           </label>
@@ -61,6 +62,7 @@ export default function RegisterPage() {
               placeholder="you@example.com"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
+              aria-describedby={error ? "register-error" : undefined}
               required
             />
           </label>
@@ -71,10 +73,15 @@ export default function RegisterPage() {
               placeholder="••••••••"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
+              aria-describedby={error ? "register-error" : undefined}
               required
             />
           </label>
-          {error && <p className="form-error">{error}</p>}
+          {error && (
+            <p className="form-error" id="register-error">
+              {error}
+            </p>
+          )}
           <button className="pill primary" type="submit">
             {isSubmitting ? "Creating..." : "Create account"}
           </button>

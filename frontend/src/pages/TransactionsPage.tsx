@@ -11,6 +11,42 @@ export default function TransactionsPage() {
           <button className="pill primary">Add Transaction</button>
         </div>
       </header>
+      <div className="card">
+        <div className="card-header">
+          <div>
+            <h3>Recurring schedules</h3>
+            <p className="muted">Automate salaries, rent, and subscriptions.</p>
+          </div>
+          <button className="pill primary">Schedule recurring</button>
+        </div>
+        <div className="list-row list-header columns-4">
+          <span>Name</span>
+          <span>Cadence</span>
+          <span>Next run</span>
+          <span>Status</span>
+        </div>
+        {[
+          {
+            name: "Salary",
+            cadence: "Monthly",
+            next: "2024-05-01",
+            status: "Active",
+          },
+          {
+            name: "Rent",
+            cadence: "Monthly",
+            next: "2024-04-30",
+            status: "Active",
+          },
+        ].map((row) => (
+          <div className="list-row columns-4" key={row.name}>
+            <span>{row.name}</span>
+            <span>{row.cadence}</span>
+            <span>{row.next}</span>
+            <span className="status">{row.status}</span>
+          </div>
+        ))}
+      </div>
       <div className="card list-card">
         <div className="list-row list-header columns-5">
           <span>Date</span>

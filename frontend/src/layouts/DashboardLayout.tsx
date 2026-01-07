@@ -10,6 +10,7 @@ import { useAuth } from "../components/AuthContext";
 const navigation = [
   { label: "Dashboard", to: "/dashboard" },
   { label: "Stocks", to: "/stocks" },
+  { label: "Market", to: "/stocks/market" },
   { label: "Transactions", to: "/transactions" },
   { label: "Accounts", to: "/accounts" },
   { label: "Settings", to: "/settings" },

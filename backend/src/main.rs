@@ -94,6 +94,7 @@ async fn main() {
         .route("/api/totals", get(routes::metrics::totals))
         .route("/api/history", get(routes::metrics::history))
         .route("/api/fx-rates", get(routes::metrics::fx_rates))
+        .route("/api/fx-rates/refresh", post(routes::metrics::refresh_fx))
         .layer(CorsLayer::new().allow_origin(Any).allow_headers(Any))
         .with_state(state);
 

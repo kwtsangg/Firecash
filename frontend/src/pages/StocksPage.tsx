@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
-import { BarChart, CandlestickChart, DonutChart, LineChart } from "../components/Charts";
+import { BarChart, DonutChart, LineChart } from "../components/Charts";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import KpiCard from "../components/KpiCard";
 import Modal from "../components/Modal";
@@ -64,14 +64,6 @@ type Trade = {
   account: string;
   date: string;
   side: "Buy" | "Sell";
-};
-
-type Candle = {
-  date: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
 };
 
 const POPULAR_SYMBOLS = [
@@ -140,9 +132,9 @@ export default function StocksPage() {
     () => readHoldingStrategies(),
   );
   const [selectedHoldings, setSelectedHoldings] = useState<Set<string>>(new Set());
-  const [candleSymbol, setCandleSymbol] = useState<string | null>(null);
-  const [candles, setCandles] = useState<Candle[]>([]);
-  const [isCandleLoading, setIsCandleLoading] = useState(false);
+  const [pendingStrategies, setPendingStrategies] = useState<Record<string, string>>({});
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -328,18 +320,23 @@ export default function StocksPage() {
     }
   };
 
-  const loadCandles = async (symbol: string) => {
-    setIsCandleLoading(true);
-    try {
-      const response = await get<{ symbol: string; candles: Candle[] }>(
-        `/api/assets/candles?symbol=${encodeURIComponent(symbol)}`,
-      );
-      setCandles(response.candles);
-    } catch (err) {
-      setCandles([]);
-    } finally {
-      setIsCandleLoading(false);
+  const pendingStrategyEntries = Object.entries(pendingStrategies).filter(
+    ([id, value]) => value !== (holdingStrategies[id] ?? "Unassigned"),
+  );
+
+  const applyPendingChanges = async () => {
+    if (pendingStrategyEntries.length === 0 && selectedHoldings.size === 0) {
+      showToast("No changes", "There are no edits to apply.");
+      return;
     }
+    if (pendingStrategyEntries.length > 0) {
+      setHoldingStrategies((prev) => ({ ...prev, ...pendingStrategies }));
+      setPendingStrategies({});
+    }
+    if (selectedHoldings.size > 0) {
+      await handleDeleteSelected();
+    }
+    setIsReviewOpen(false);
   };
 
   const performanceSeries = useMemo(() => {
@@ -735,39 +732,58 @@ export default function StocksPage() {
           </label>
         </div>
       </Modal>
-      {toast && <ActionToast toast={toast} onDismiss={() => setToast(null)} />}
-      {candleSymbol ? (
-        <div className="card chart-card">
-          <div className="chart-header">
-            <div>
-              <h3>{candleSymbol} price action</h3>
-              <p className="muted">Daily candles from Stooq.</p>
-            </div>
-            <button
-              className="pill"
-              onClick={() => {
-                setCandleSymbol(null);
-                setCandles([]);
-              }}
-            >
-              Clear
+      <Modal
+        title="Confirm changes"
+        description="Review the updates before applying."
+        isOpen={isReviewOpen}
+        onClose={() => setIsReviewOpen(false)}
+        footer={
+          <>
+            <button className="pill" type="button" onClick={() => setIsReviewOpen(false)}>
+              Cancel
             </button>
-          </div>
-          <div className="chart-surface">
-            {isCandleLoading ? (
-              <p className="muted">Loading candles…</p>
-            ) : candles.length === 0 ? (
-              <p className="muted">No candle data available.</p>
-            ) : (
-              <CandlestickChart
-                candles={candles}
-                formatValue={(value) => formatCurrency(value, displayCurrency)}
-                formatLabel={formatDateDisplay}
-              />
-            )}
-          </div>
+            <button className="pill primary" type="button" onClick={applyPendingChanges}>
+              Apply changes
+            </button>
+          </>
+        }
+      >
+        <div className="confirm-list">
+          {pendingStrategyEntries.length === 0 && selectedHoldings.size === 0 ? (
+            <p className="muted">No changes pending.</p>
+          ) : (
+            <>
+              {pendingStrategyEntries.length > 0 ? (
+                <div className="confirm-section">
+                  <h4>Strategy updates</h4>
+                  <ul>
+                    {pendingStrategyEntries.map(([id, value]) => {
+                      const holding = holdings.find((item) => item.id === id);
+                      return (
+                        <li key={id}>
+                          {holding?.ticker ?? id}: {holdingStrategies[id] ?? "Unassigned"} → {value}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ) : null}
+              {selectedHoldings.size > 0 ? (
+                <div className="confirm-section">
+                  <h4>Deletions</h4>
+                  <ul>
+                    {Array.from(selectedHoldings).map((id) => {
+                      const holding = holdings.find((item) => item.id === id);
+                      return <li key={id}>{holding?.ticker ?? id}</li>;
+                    })}
+                  </ul>
+                </div>
+              ) : null}
+            </>
+          )}
         </div>
-      ) : null}
+      </Modal>
+      {toast && <ActionToast toast={toast} onDismiss={() => setToast(null)} />}
       <div className="card-grid">
         <KpiCard
           label="Total Equity"
@@ -787,6 +803,36 @@ export default function StocksPage() {
           trend={dayChangeTrend}
           footnote="market open"
         />
+      </div>
+      <div className="card">
+        <h3>Action center</h3>
+        <p className="muted">Quick shortcuts for your portfolio.</p>
+        <div className="action-grid">
+          <button
+            className="pill"
+            onClick={() => showToast("Import ready", "Upload a broker CSV file.")}
+          >
+            Import holdings
+          </button>
+          <button
+            className="pill"
+            onClick={() => showToast("Alert created", "Price trigger saved.")}
+          >
+            Create alert
+          </button>
+          <button
+            className="pill"
+            onClick={() => showToast("Rebalance started", "Suggested trades generated.")}
+          >
+            Rebalance
+          </button>
+          <button
+            className="pill"
+            onClick={() => showToast("Note added", "Insights saved to journal.")}
+          >
+            Add note
+          </button>
+        </div>
       </div>
       <div className="card chart-card">
         <div className="chart-header">
@@ -855,117 +901,131 @@ export default function StocksPage() {
       </div>
       <div className="card list-card">
         <div className="list-actions">
-          <button className="pill" type="button" onClick={handleDeleteSelected}>
-            Delete selected
+          <button
+            className="pill"
+            type="button"
+            onClick={() => {
+              setIsEditMode((prev) => !prev);
+              setSelectedHoldings(new Set());
+              setPendingStrategies({});
+            }}
+          >
+            {isEditMode ? "Exit edit mode" : "Edit holdings"}
           </button>
-        </div>
-        <div className="list-row list-header columns-8">
-          <span>
-            <input
-              type="checkbox"
-              checked={
-                filteredHoldings.length > 0 &&
-                filteredHoldings.every((holding) => selectedHoldings.has(holding.id))
-              }
-              onChange={(event) => {
-                if (event.target.checked) {
+          {isEditMode ? (
+            <>
+              <button
+                className="pill"
+                type="button"
+                onClick={() => {
                   setSelectedHoldings(
                     new Set(filteredHoldings.map((holding) => holding.id)),
                   );
-                } else {
-                  setSelectedHoldings(new Set());
-                }
-              }}
-            />
-          </span>
+                }}
+              >
+                Select all
+              </button>
+              <button className="pill" type="button" onClick={handleDeleteSelected}>
+                Delete selected
+              </button>
+              <button className="pill primary" type="button" onClick={() => setIsReviewOpen(true)}>
+                Review changes
+              </button>
+            </>
+          ) : null}
+        </div>
+        <div className={`list-row list-header ${isEditMode ? "columns-8" : "columns-7"}`}>
+          {isEditMode ? <span /> : null}
           <span>Ticker</span>
           <span>Shares</span>
           <span>Avg Entry</span>
           <span>Last Price</span>
           <span>Market Value ({displayCurrency})</span>
           <span>Day Change</span>
-          <span>Strategy</span>
+          {isEditMode ? <span>Strategy</span> : null}
           <span>Account</span>
         </div>
         {filteredHoldings.length === 0 ? (
-          <div className="list-row columns-8 empty-state">No holdings available.</div>
+          <div className={`list-row ${isEditMode ? "columns-8" : "columns-7"} empty-state`}>
+            No holdings available.
+          </div>
         ) : (
-          filteredHoldings.map((row) => (
-            <div
-              className="list-row columns-8"
-              key={row.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => {
-                setCandleSymbol(row.ticker);
-                loadCandles(row.ticker);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  setCandleSymbol(row.ticker);
-                  loadCandles(row.ticker);
-                }
-              }}
-            >
-              <span>
-                <input
-                  type="checkbox"
-                  checked={selectedHoldings.has(row.id)}
-                  onChange={(event) => {
-                    event.stopPropagation();
-                    toggleHoldingSelection(row.id);
-                  }}
-                  onClick={(event) => event.stopPropagation()}
-                />
-              </span>
-              <span>{row.ticker}</span>
-              <span>{row.shares}</span>
-              <span>
-                {row.avgEntry === null
-                  ? "—"
-                  : `${formatCurrency(row.avgEntry, row.currency)} ${row.currency}`}
-              </span>
-              <span>
-                {row.price === null
-                  ? "—"
-                  : `${formatCurrency(row.price, row.currency)} ${row.currency}`}
-              </span>
-              <span>
-                {row.price === null
-                  ? "—"
-                  : formatCurrency(
-                      convertAmount(row.price * row.shares, row.currency, displayCurrency),
-                      displayCurrency,
-                    )}
-              </span>
-              <span className={row.change < 0 ? "status warn" : "status"}>
-                {row.change > 0 ? "+" : ""}
-                {row.change.toFixed(1)}%
-              </span>
-              <span>
-                <select
-                  value={holdingStrategies[row.id] ?? "Unassigned"}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setHoldingStrategies((prev) => ({
-                      ...prev,
-                      [row.id]: value,
-                    }));
-                  }}
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  {["Unassigned", ...strategies].map((strategy) => (
-                    <option key={strategy} value={strategy}>
-                      {strategy}
-                    </option>
-                  ))}
-                </select>
-              </span>
-              <span>{row.account}</span>
-            </div>
-          ))
+          filteredHoldings.map((row) => {
+            const currentStrategy = holdingStrategies[row.id] ?? "Unassigned";
+            const pendingStrategy = pendingStrategies[row.id];
+            const isSelected = selectedHoldings.has(row.id);
+            const isEdited = pendingStrategy && pendingStrategy !== currentStrategy;
+            return (
+              <div
+                className={`list-row ${isEditMode ? "columns-8" : "columns-7"} ${
+                  isSelected ? "row-selected" : ""
+                } ${isEdited ? "row-edited" : ""}`}
+                key={row.id}
+              >
+                {isEditMode ? (
+                  <span>
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleHoldingSelection(row.id)}
+                    />
+                  </span>
+                ) : null}
+                <span>{row.ticker}</span>
+                <span>{row.shares}</span>
+                <span>
+                  {row.avgEntry === null
+                    ? "—"
+                    : `${formatCurrency(row.avgEntry, row.currency)} ${row.currency}`}
+                </span>
+                <span>
+                  {row.price === null
+                    ? "—"
+                    : `${formatCurrency(row.price, row.currency)} ${row.currency}`}
+                </span>
+                <span>
+                  {row.price === null
+                    ? "—"
+                    : formatCurrency(
+                        convertAmount(row.price * row.shares, row.currency, displayCurrency),
+                        displayCurrency,
+                      )}
+                </span>
+                <span className={row.change < 0 ? "status warn" : "status"}>
+                  {row.change > 0 ? "+" : ""}
+                  {row.change.toFixed(1)}%
+                </span>
+                {isEditMode ? (
+                  <span>
+                    <select
+                      value={pendingStrategy ?? currentStrategy}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setPendingStrategies((prev) => {
+                          const next = { ...prev };
+                          if (value === currentStrategy) {
+                            delete next[row.id];
+                          } else {
+                            next[row.id] = value;
+                          }
+                          return next;
+                        });
+                      }}
+                    >
+                      {["Unassigned", ...strategies].map((strategy) => (
+                        <option key={strategy} value={strategy}>
+                          {strategy}
+                        </option>
+                      ))}
+                    </select>
+                  </span>
+                ) : null}
+                <span>{row.account}</span>
+              </div>
+            );
+          })
         )}
-        <div className="list-row columns-8 summary-row">
+        <div className={`list-row ${isEditMode ? "columns-8" : "columns-7"} summary-row`}>
           <span>Total</span>
           <span>-</span>
           <span>-</span>
@@ -973,7 +1033,7 @@ export default function StocksPage() {
           <span>-</span>
           <span>{formatCurrency(totalEquity, displayCurrency)}</span>
           <span>-</span>
-          <span>-</span>
+          {isEditMode ? <span>-</span> : null}
           <span>-</span>
         </div>
       </div>
@@ -1012,35 +1072,6 @@ export default function StocksPage() {
             </div>
           ))
         )}
-      </div>
-      <div className="card">
-        <h3>Action center</h3>
-        <div className="action-grid">
-          <button
-            className="pill"
-            onClick={() => showToast("Import ready", "Upload a broker CSV file.")}
-          >
-            Import holdings
-          </button>
-          <button
-            className="pill"
-            onClick={() => showToast("Alert created", "Price trigger saved.")}
-          >
-            Create alert
-          </button>
-          <button
-            className="pill"
-            onClick={() => showToast("Rebalance started", "Suggested trades generated.")}
-          >
-            Rebalance
-          </button>
-          <button
-            className="pill"
-            onClick={() => showToast("Note added", "Insights saved to journal.")}
-          >
-            Add note
-          </button>
-        </div>
       </div>
     </section>
   );

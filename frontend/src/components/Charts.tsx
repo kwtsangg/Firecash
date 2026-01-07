@@ -400,7 +400,7 @@ export function DonutChart({ values, formatValue }: DonutChartProps) {
   } | null>(null);
 
   const handleMove = (
-    event: MouseEvent<SVGPathElement>,
+    event: MouseEvent<SVGElement>,
     item: { label: string; value: number },
   ) => {
     if (!wrapperRef.current) {
@@ -426,6 +426,22 @@ export function DonutChart({ values, formatValue }: DonutChartProps) {
           const start = (cumulative / total) * 2 * Math.PI;
           const end = ((cumulative + item.value) / total) * 2 * Math.PI;
           cumulative += item.value;
+          if (values.length === 1 || item.value === total) {
+            return (
+              <circle
+                key={item.label}
+                cx="60"
+                cy="60"
+                r="46"
+                stroke={item.color}
+                strokeWidth="16"
+                fill="none"
+                strokeLinecap="round"
+                onMouseMove={(event) => handleMove(event, item)}
+                onMouseLeave={() => setHovered(null)}
+              />
+            );
+          }
           const largeArc = end - start > Math.PI ? 1 : 0;
           const startX = 60 + 46 * Math.cos(start - Math.PI / 2);
           const startY = 60 + 46 * Math.sin(start - Math.PI / 2);

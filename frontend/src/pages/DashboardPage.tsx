@@ -637,29 +637,6 @@ export default function DashboardPage() {
           footnote="Year to date"
         />
       </div>
-      <div className="card">
-        <h3>Quick actions</h3>
-        <div className="action-grid">
-          <button
-            className="pill"
-            onClick={() => showToast("Group creator ready", "Name your new group.")}
-          >
-            Create Group
-          </button>
-          <button
-            className="pill"
-            onClick={() => setIsBudgetOpen(true)}
-          >
-            Set Budget
-          </button>
-          <button
-            className="pill"
-            onClick={() => showToast("Snapshot shared", "Link copied to clipboard.")}
-          >
-            Share Snapshot
-          </button>
-        </div>
-      </div>
       <div className="card chart-card">
         <div className="chart-header">
           <div>

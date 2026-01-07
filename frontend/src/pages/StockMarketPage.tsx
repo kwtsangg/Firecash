@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CandlestickChart } from "../components/Charts";
 import { get } from "../utils/apiClient";
 import { formatCurrency } from "../utils/currency";
@@ -74,66 +74,72 @@ export default function StockMarketPage() {
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [candles, setCandles] = useState<Candle[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [candlesError, setCandlesError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [rangeDays, setRangeDays] = useState<number | null>(90);
+  const [isOverviewLoading, setIsOverviewLoading] = useState(false);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
+  const [symbolsError, setSymbolsError] = useState<string | null>(null);
   const [overview, setOverview] = useState<
     { label: string; symbol: string; price: number | null; change: number | null }[]
   >([]);
   const displayCurrency = selectedSymbol ? currencyFromSymbol(selectedSymbol) : "USD";
 
-  useEffect(() => {
-    let isMounted = true;
-    const loadSymbols = async () => {
-      try {
-        const assets = await get<Asset[]>("/api/assets");
-        if (!isMounted) {
-          return;
-        }
-        const assetSymbols = assets.map((asset) => asset.symbol);
-        setSymbols(Array.from(new Set([...assetSymbols, ...POPULAR_SYMBOLS])));
-      } catch (error) {
-        if (isMounted) {
-          setSymbols(POPULAR_SYMBOLS);
-        }
-      }
-    };
-    loadSymbols();
-    return () => {
-      isMounted = false;
-    };
+  const loadSymbols = useCallback(async () => {
+    try {
+      const assets = await get<Asset[]>("/api/assets");
+      const assetSymbols = assets.map((asset) => asset.symbol);
+      setSymbols(Array.from(new Set([...assetSymbols, ...POPULAR_SYMBOLS])));
+      setSymbolsError(null);
+    } catch (error) {
+      setSymbols(POPULAR_SYMBOLS);
+      setSymbolsError("Unable to load tracked assets. Showing popular symbols instead.");
+    }
+  }, []);
+
+  const loadOverview = useCallback(async () => {
+    setIsOverviewLoading(true);
+    try {
+      const results = await Promise.all(
+        OVERVIEW_SYMBOLS.map(async (item) => {
+          const response = await get<{ candles: Candle[] }>(
+            `/api/assets/candles?symbol=${encodeURIComponent(item.symbol)}`,
+          );
+          const latest = response.candles.at(-1);
+          const previous = response.candles.at(-2);
+          const price = latest?.close ?? null;
+          const change =
+            latest && previous ? ((latest.close - previous.close) / previous.close) * 100 : null;
+          return { ...item, price, change };
+        }),
+      );
+      setOverview(results);
+      setOverviewError(null);
+    } catch (error) {
+      setOverview(OVERVIEW_SYMBOLS.map((item) => ({ ...item, price: null, change: null })));
+      setOverviewError("Unable to load market overview data right now.");
+    } finally {
+      setIsOverviewLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     let isMounted = true;
-    const loadOverview = async () => {
-      try {
-        const results = await Promise.all(
-          OVERVIEW_SYMBOLS.map(async (item) => {
-            const response = await get<{ candles: Candle[] }>(
-              `/api/assets/candles?symbol=${encodeURIComponent(item.symbol)}`,
-            );
-            const latest = response.candles.at(-1);
-            const previous = response.candles.at(-2);
-            const price = latest?.close ?? null;
-            const change =
-              latest && previous ? ((latest.close - previous.close) / previous.close) * 100 : null;
-            return { ...item, price, change };
-          }),
-        );
-        if (isMounted) {
-          setOverview(results);
-        }
-      } catch (error) {
-        if (isMounted) {
-          setOverview(OVERVIEW_SYMBOLS.map((item) => ({ ...item, price: null, change: null })));
-        }
+    const load = async () => {
+      await loadSymbols();
+      if (isMounted) {
+        await loadOverview();
       }
     };
-    loadOverview();
+    load();
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [loadOverview, loadSymbols]);
+
+  const retryOverview = () => {
+    loadOverview();
+  };
 
   const filteredSymbols = useMemo(() => {
     if (!query) {
@@ -155,6 +161,7 @@ export default function StockMarketPage() {
   const loadCandles = async (symbol: string) => {
     setSelectedSymbol(symbol);
     setIsLoading(true);
+    setCandlesError(null);
     try {
       const response = await get<{ candles: Candle[] }>(
         `/api/assets/candles?symbol=${encodeURIComponent(symbol)}`,
@@ -162,8 +169,15 @@ export default function StockMarketPage() {
       setCandles(response.candles);
     } catch (error) {
       setCandles([]);
+      setCandlesError("Unable to load candles. Try again or refresh later.");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const retryCandles = () => {
+    if (selectedSymbol) {
+      loadCandles(selectedSymbol);
     }
   };
 
@@ -182,29 +196,41 @@ export default function StockMarketPage() {
             <h3>Market overview</h3>
             <p className="muted">Quick reads for major indices.</p>
           </div>
-          <a
-            className="pill"
-            href="https://finviz.com/map.ashx"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Open Finviz heatmap
-          </a>
+          <div className="toolbar">
+            <button className="pill" type="button" onClick={retryOverview}>
+              Refresh overview
+            </button>
+            <a
+              className="pill"
+              href="https://finviz.com/map.ashx"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open Finviz heatmap
+            </a>
+          </div>
         </div>
+        {overviewError ? <p className="muted">{overviewError}</p> : null}
         <div className="symbol-grid">
-          {overview.map((item) => (
-            <div key={item.symbol} className="symbol-card">
-              <span>{item.label}</span>
-              <span className="muted">
-                {item.price === null
-                  ? "No data"
-                  : formatCurrency(item.price, currencyFromSymbol(item.symbol))}
-              </span>
-              <span className={item.change && item.change < 0 ? "status warn" : "status"}>
-                {item.change === null ? "—" : `${item.change > 0 ? "+" : ""}${item.change.toFixed(2)}%`}
-              </span>
-            </div>
-          ))}
+          {isOverviewLoading ? (
+            <p className="muted">Loading market overview…</p>
+          ) : (
+            overview.map((item) => (
+              <div key={item.symbol} className="symbol-card">
+                <span>{item.label}</span>
+                <span className="muted">
+                  {item.price === null
+                    ? "No data"
+                    : formatCurrency(item.price, currencyFromSymbol(item.symbol))}
+                </span>
+                <span className={item.change && item.change < 0 ? "status warn" : "status"}>
+                  {item.change === null
+                    ? "—"
+                    : `${item.change > 0 ? "+" : ""}${item.change.toFixed(2)}%`}
+                </span>
+              </div>
+            ))
+          )}
         </div>
       </div>
       <div className="card">
@@ -221,6 +247,7 @@ export default function StockMarketPage() {
             onChange={(event) => setQuery(event.target.value.toUpperCase())}
           />
         </div>
+        {symbolsError ? <p className="muted">{symbolsError}</p> : null}
         <div className="symbol-grid">
           {filteredSymbols.map((symbol) => (
             <button
@@ -256,11 +283,28 @@ export default function StockMarketPage() {
                 {preset.label}
               </button>
             ))}
+            <button className="pill" type="button" onClick={retryCandles} disabled={!selectedSymbol}>
+              Refresh candles
+            </button>
           </div>
         </div>
         <div className="chart-surface">
           {isLoading ? (
             <p className="muted">Loading candles…</p>
+          ) : candlesError ? (
+            <div className="empty-state">
+              <p className="muted">{candlesError}</p>
+              <button className="pill" type="button" onClick={retryCandles} disabled={!selectedSymbol}>
+                Try again
+              </button>
+            </div>
+          ) : displayedCandles.length === 0 && selectedSymbol ? (
+            <div className="empty-state">
+              <p className="muted">No candles available for this symbol yet.</p>
+              <button className="pill" type="button" onClick={retryCandles}>
+                Refresh candles
+              </button>
+            </div>
           ) : displayedCandles.length === 0 ? (
             <p className="muted">Select a symbol to view candles.</p>
           ) : (

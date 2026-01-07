@@ -44,6 +44,7 @@ type Holding = {
   price: number | null;
   change: number;
   currency: string;
+  assetType: string;
   account: string;
   entryDate: string;
 };
@@ -110,6 +111,7 @@ export default function StocksPage() {
             price: priceInfo?.price ?? null,
             change: 0,
             currency: priceInfo?.currency_code ?? asset.currency_code,
+            assetType: asset.asset_type,
             account: accountMap.get(asset.account_id) ?? "Unknown",
             entryDate: "-",
           };
@@ -164,10 +166,25 @@ export default function StocksPage() {
   const handleSyncQuotes = async () => {
     try {
       showToast("Quotes syncing", "Refreshing stock prices.");
-      await post<{ updated: number }>("/api/assets/refresh-prices", {});
+      const refreshResponse = await post<{ updated: number }>(
+        "/api/assets/refresh-prices",
+        {},
+      );
       const pricesResponse = await get<AssetPrice[]>("/api/assets/prices");
       applyPriceUpdates(pricesResponse);
-      showToast("Quotes updated", "Latest stock prices are in.");
+      const updatedCount = refreshResponse?.updated ?? 0;
+      const availablePrices = pricesResponse.filter((price) => price.price !== null)
+        .length;
+      if (updatedCount > 0) {
+        showToast(
+          "Quotes updated",
+          `${updatedCount} price${updatedCount === 1 ? "" : "s"} refreshed.`,
+        );
+      } else if (availablePrices > 0) {
+        showToast("Quotes up to date", "No new prices were returned.");
+      } else {
+        showToast("No prices available", "Latest price data could not be fetched.");
+      }
     } catch (err) {
       showToast("Quote sync failed", "Unable to refresh stock prices.");
     }
@@ -226,16 +243,49 @@ export default function StocksPage() {
   }, [holdings.length]);
 
   const sectorMix = useMemo(() => {
-    if (holdings.length === 0) {
+    if (filteredHoldings.length === 0) {
       return [];
     }
-    return [
-      { label: "Tech", value: 45, color: "#7f5bff" },
-      { label: "Healthcare", value: 22, color: "#43d6b1" },
-      { label: "Finance", value: 18, color: "#f7b955" },
-      { label: "Energy", value: 15, color: "#5b6cff" },
+    const colorPalette = [
+      "#7f5bff",
+      "#43d6b1",
+      "#f7b955",
+      "#5b6cff",
+      "#ff7aa2",
+      "#6bdcff",
+      "#ffa36b",
     ];
-  }, [holdings.length]);
+    const formatSector = (value: string) =>
+      value
+        .replace(/_/g, " ")
+        .toLowerCase()
+        .replace(/\b\w/g, (match) => match.toUpperCase());
+    const totals = filteredHoldings.reduce<Record<string, number>>((acc, holding) => {
+      const effectivePrice = holding.price ?? holding.avgEntry;
+      if (!effectivePrice) {
+        return acc;
+      }
+      const value = convertAmount(
+        effectivePrice * holding.shares,
+        holding.currency,
+        displayCurrency,
+      );
+      const key = holding.assetType || "Other";
+      acc[key] = (acc[key] ?? 0) + value;
+      return acc;
+    }, {});
+    const entries = Object.entries(totals);
+    if (entries.length === 0) {
+      return [];
+    }
+    return entries
+      .sort((a, b) => b[1] - a[1])
+      .map(([label, value], index) => ({
+        label: formatSector(label),
+        value,
+        color: colorPalette[index % colorPalette.length],
+      }));
+  }, [displayCurrency, filteredHoldings]);
 
   const totalEquity = filteredHoldings.reduce((sum, holding) => {
     const effectivePrice = holding.price ?? holding.avgEntry;
@@ -380,6 +430,7 @@ export default function StocksPage() {
                     price,
                     change: 0,
                     currency: normalizedTicker.endsWith(".HK") ? "HKD" : "USD",
+                    assetType: "Stock",
                     account: holdingAccount,
                     entryDate: holdingDate,
                   },

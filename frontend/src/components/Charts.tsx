@@ -24,15 +24,23 @@ export function LineChart({
   const max = Math.max(...points);
   const min = Math.min(...points);
   const range = max - min || 1;
+  const paddingX = 6;
+  const paddingY = 8;
+  const plotWidth = 100 - paddingX * 2;
+  const plotHeight = 100 - paddingY * 2;
+  const valuePadding = range === 0 ? Math.max(1, Math.abs(max) * 0.1) : range * 0.08;
+  const chartMax = max + valuePadding;
+  const chartMin = min - valuePadding;
+  const chartRange = chartMax - chartMin || 1;
   const count = Math.max(points.length - 1, 1);
   const positions = useMemo(
     () =>
       points.map((value, index) => {
-        const x = (index / count) * 100;
-        const y = 100 - ((value - min) / range) * 100;
+        const x = paddingX + (index / count) * plotWidth;
+        const y = paddingY + (1 - (value - chartMin) / chartRange) * plotHeight;
         return { x, y, value };
       }),
-    [points, count, min, range],
+    [points, count, chartMin, chartRange, paddingX, paddingY, plotHeight, plotWidth],
   );
   const path = positions
     .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
@@ -49,8 +57,8 @@ export function LineChart({
       upperIndex === lowerIndex ? 0 : (scaledIndex - lowerIndex) / (upperIndex - lowerIndex);
     const value =
       points[lowerIndex] + (points[upperIndex] - points[lowerIndex]) * blend;
-    const x = clampedRatio * 100;
-    const y = 100 - ((value - min) / range) * 100;
+    const x = paddingX + clampedRatio * plotWidth;
+    const y = paddingY + (1 - (value - chartMin) / chartRange) * plotHeight;
     return {
       x,
       y,
@@ -59,7 +67,35 @@ export function LineChart({
       upperIndex,
       blend,
     };
-  }, [hoverRatio, min, points, range]);
+  }, [chartMin, chartRange, hoverRatio, paddingX, paddingY, plotHeight, plotWidth, points]);
+
+  const majorYCount = 5;
+  const majorXCount = 5;
+  const minorPerMajor = 1;
+  const majorYTicks = Array.from({ length: majorYCount }, (_, index) =>
+    paddingY + (plotHeight * index) / (majorYCount - 1),
+  );
+  const majorXTicks = Array.from({ length: majorXCount }, (_, index) =>
+    paddingX + (plotWidth * index) / (majorXCount - 1),
+  );
+  const minorYTicks = majorYTicks.flatMap((start, index) => {
+    const next = majorYTicks[index + 1];
+    if (!next) {
+      return [];
+    }
+    return Array.from({ length: minorPerMajor }, (_, step) =>
+      start + ((step + 1) * (next - start)) / (minorPerMajor + 1),
+    );
+  });
+  const minorXTicks = majorXTicks.flatMap((start, index) => {
+    const next = majorXTicks[index + 1];
+    if (!next) {
+      return [];
+    }
+    return Array.from({ length: minorPerMajor }, (_, step) =>
+      start + ((step + 1) * (next - start)) / (minorPerMajor + 1),
+    );
+  });
 
   const tooltipValue =
     activePoint && formatValue
@@ -102,6 +138,48 @@ export function LineChart({
         onMouseMove={handleMove}
         onMouseLeave={handleLeave}
       >
+        <g className="chart-grid">
+          {majorYTicks.map((tick, index) => (
+            <line
+              key={`y-major-${index}`}
+              className="chart-grid-major"
+              x1={paddingX}
+              y1={tick}
+              x2={100 - paddingX}
+              y2={tick}
+            />
+          ))}
+          {minorYTicks.map((tick, index) => (
+            <line
+              key={`y-minor-${index}`}
+              className="chart-grid-minor"
+              x1={paddingX}
+              y1={tick}
+              x2={100 - paddingX}
+              y2={tick}
+            />
+          ))}
+          {majorXTicks.map((tick, index) => (
+            <line
+              key={`x-major-${index}`}
+              className="chart-grid-major"
+              x1={tick}
+              y1={paddingY}
+              x2={tick}
+              y2={100 - paddingY}
+            />
+          ))}
+          {minorXTicks.map((tick, index) => (
+            <line
+              key={`x-minor-${index}`}
+              className="chart-grid-minor"
+              x1={tick}
+              y1={paddingY}
+              x2={tick}
+              y2={100 - paddingY}
+            />
+          ))}
+        </g>
         <path d={path} fill="none" stroke="url(#lineGradient)" strokeWidth="3" />
         {activePoint ? (
           <g className="chart-crosshair-group">

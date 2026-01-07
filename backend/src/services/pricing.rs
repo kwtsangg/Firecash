@@ -54,7 +54,8 @@ pub async fn refresh_asset_prices(
         let asset_id: Uuid = row.try_get("id")?;
         let symbol: String = row.try_get("symbol")?;
         let currency_code: String = row.try_get("currency_code")?;
-        symbol_map.entry(symbol).or_default().push(asset_id);
+        let normalized_symbol = symbol.trim().to_uppercase();
+        symbol_map.entry(normalized_symbol).or_default().push(asset_id);
         currency_map.insert(asset_id, currency_code);
     }
 

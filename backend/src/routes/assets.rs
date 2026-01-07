@@ -230,6 +230,7 @@ pub async fn create_asset(
     user: AuthenticatedUser,
     Json(payload): Json<CreateAssetRequest>,
 ) -> Result<Json<Asset>, (axum::http::StatusCode, String)> {
+    let symbol = payload.symbol.trim().to_uppercase();
     let owner = sqlx::query(
         r#"
         SELECT user_id
@@ -259,7 +260,7 @@ pub async fn create_asset(
     )
     .bind(id)
     .bind(payload.account_id)
-    .bind(payload.symbol)
+    .bind(symbol)
     .bind(payload.asset_type)
     .bind(payload.quantity)
     .bind(payload.currency_code)
@@ -315,6 +316,10 @@ pub async fn update_asset(
         }
     }
 
+    let normalized_symbol = payload
+        .symbol
+        .as_ref()
+        .map(|symbol| symbol.trim().to_uppercase());
     let record = sqlx::query_as::<_, UpdateAssetResponse>(
         r#"
         UPDATE assets
@@ -328,7 +333,7 @@ pub async fn update_asset(
         "#,
     )
     .bind(payload.account_id)
-    .bind(payload.symbol)
+    .bind(normalized_symbol.as_deref())
     .bind(payload.asset_type)
     .bind(payload.quantity)
     .bind(payload.currency_code)

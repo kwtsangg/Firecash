@@ -1,4 +1,4 @@
-import { useMemo, useState, type MouseEvent } from "react";
+import { useMemo, useRef, useState, type MouseEvent } from "react";
 
 type LineChartProps = {
   points: number[];
@@ -270,38 +270,83 @@ export function BarChart({ values }: BarChartProps) {
 
 type DonutChartProps = {
   values: { label: string; value: number; color: string }[];
+  formatValue?: (value: number) => string;
 };
 
-export function DonutChart({ values }: DonutChartProps) {
+export function DonutChart({ values, formatValue }: DonutChartProps) {
   const total = values.reduce((sum, item) => sum + item.value, 0) || 1;
   let cumulative = 0;
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const [hovered, setHovered] = useState<{
+    label: string;
+    value: number;
+    x: number;
+    y: number;
+    percent: number;
+  } | null>(null);
+
+  const handleMove = (
+    event: MouseEvent<SVGPathElement>,
+    item: { label: string; value: number },
+  ) => {
+    if (!wrapperRef.current) {
+      return;
+    }
+    const rect = wrapperRef.current.getBoundingClientRect();
+    setHovered({
+      label: item.label,
+      value: item.value,
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+      percent: total > 0 ? (item.value / total) * 100 : 0,
+    });
+  };
+
+  const formatAmount = (value: number) =>
+    formatValue ? formatValue(value) : value.toFixed(2);
   return (
-    <svg viewBox="0 0 120 120" className="donut-chart">
-      <circle cx="60" cy="60" r="46" stroke="#2a2f48" strokeWidth="16" fill="none" />
-      {values.map((item) => {
-        const start = (cumulative / total) * 2 * Math.PI;
-        const end = ((cumulative + item.value) / total) * 2 * Math.PI;
-        cumulative += item.value;
-        const largeArc = end - start > Math.PI ? 1 : 0;
-        const startX = 60 + 46 * Math.cos(start - Math.PI / 2);
-        const startY = 60 + 46 * Math.sin(start - Math.PI / 2);
-        const endX = 60 + 46 * Math.cos(end - Math.PI / 2);
-        const endY = 60 + 46 * Math.sin(end - Math.PI / 2);
-        const path = `M ${startX} ${startY} A 46 46 0 ${largeArc} 1 ${endX} ${endY}`;
-        return (
-          <path
-            key={item.label}
-            d={path}
-            stroke={item.color}
-            strokeWidth="16"
-            fill="none"
-            strokeLinecap="round"
-          />
-        );
-      })}
-      <text x="60" y="60" textAnchor="middle" dominantBaseline="middle" fill="#f5f6ff">
-        {total.toFixed(0)}
-      </text>
-    </svg>
+    <div className="donut-chart-wrapper" ref={wrapperRef}>
+      <svg viewBox="0 0 120 120" className="donut-chart">
+        <circle cx="60" cy="60" r="46" stroke="#2a2f48" strokeWidth="16" fill="none" />
+        {values.map((item) => {
+          const start = (cumulative / total) * 2 * Math.PI;
+          const end = ((cumulative + item.value) / total) * 2 * Math.PI;
+          cumulative += item.value;
+          const largeArc = end - start > Math.PI ? 1 : 0;
+          const startX = 60 + 46 * Math.cos(start - Math.PI / 2);
+          const startY = 60 + 46 * Math.sin(start - Math.PI / 2);
+          const endX = 60 + 46 * Math.cos(end - Math.PI / 2);
+          const endY = 60 + 46 * Math.sin(end - Math.PI / 2);
+          const path = `M ${startX} ${startY} A 46 46 0 ${largeArc} 1 ${endX} ${endY}`;
+          return (
+            <path
+              key={item.label}
+              d={path}
+              stroke={item.color}
+              strokeWidth="16"
+              fill="none"
+              strokeLinecap="round"
+              onMouseMove={(event) => handleMove(event, item)}
+              onMouseLeave={() => setHovered(null)}
+            />
+          );
+        })}
+        <text x="60" y="60" textAnchor="middle" dominantBaseline="middle" fill="#f5f6ff">
+          {total.toFixed(0)}
+        </text>
+      </svg>
+      {hovered ? (
+        <div
+          className="donut-tooltip"
+          style={{ left: hovered.x, top: hovered.y }}
+        >
+          <div className="donut-tooltip-label">{hovered.label}</div>
+          <div className="donut-tooltip-value">{formatAmount(hovered.value)}</div>
+          <div className="donut-tooltip-meta">
+            {hovered.percent.toFixed(1)}%
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }

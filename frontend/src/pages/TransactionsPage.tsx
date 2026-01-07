@@ -1,13 +1,48 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import Modal from "../components/Modal";
 import { useCurrency } from "../components/CurrencyContext";
 import { useSelection } from "../components/SelectionContext";
+import { get } from "../utils/apiClient";
 import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
 
+type Account = {
+  id: string;
+  name: string;
+};
+
+type Transaction = {
+  id: string;
+  account_id: string;
+  amount: number;
+  currency_code: string;
+  transaction_type: string;
+  description: string | null;
+  occurred_at: string;
+};
+
+type RecurringTransaction = {
+  id: string;
+  account_id: string;
+  amount: number;
+  currency_code: string;
+  transaction_type: string;
+  description: string | null;
+  interval_days: number;
+  next_occurs_at: string;
+};
+
+type TransactionRow = {
+  date: string;
+  account: string;
+  type: string;
+  amount: number;
+  currency: string;
+  status: string;
+};
+
 export default function TransactionsPage() {
-  const accountOptions = ["Primary Account", "Retirement", "Side Hustle"];
   const { currency: displayCurrency } = useCurrency();
   const { account: selectedAccount, group: selectedGroup } = useSelection();
   const [toast, setToast] = useState<ActionToastData | null>(null);
@@ -16,54 +51,97 @@ export default function TransactionsPage() {
     to: "2026-04-30",
   });
   const [isTransactionOpen, setIsTransactionOpen] = useState(false);
-  const [transactionAccount, setTransactionAccount] = useState(accountOptions[0]);
+  const [transactionAccount, setTransactionAccount] = useState("");
   const [transactionType, setTransactionType] = useState("Income");
   const [transactionAmount, setTransactionAmount] = useState("");
   const [transactionDate, setTransactionDate] = useState("2026-04-20");
   const [transactionCurrency, setTransactionCurrency] = useState("USD");
-  const [transactions, setTransactions] = useState<
-    {
-      date: string;
-      account: string;
-      type: string;
-      amount: number;
-      currency: string;
-      status: string;
-    }[]
-  >([
-    {
-      date: "2026-04-18",
-      account: "Primary Account",
-      type: "Income",
-      amount: 2400,
-      currency: "USD",
-      status: "Cleared",
-    },
-    {
-      date: "2026-04-16",
-      account: "Retirement",
-      type: "Expense",
-      amount: 320,
-      currency: "USD",
-      status: "Scheduled",
-    },
-  ]);
+  const [transactions, setTransactions] = useState<TransactionRow[]>([]);
+  const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const accountGroups: Record<string, string> = {
-    "Primary Account": "Cashflow",
-    Retirement: "Investments",
-    "Side Hustle": "Cashflow",
-  };
+  useEffect(() => {
+    let isMounted = true;
+    const loadData = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const [accountsResponse, transactionsResponse, recurringResponse] = await Promise.all([
+          get<Account[]>("/api/accounts"),
+          get<Transaction[]>("/api/transactions"),
+          get<RecurringTransaction[]>("/api/recurring-transactions"),
+        ]);
+        if (!isMounted) {
+          return;
+        }
+        const accountMap = new Map(accountsResponse.map((item) => [item.id, item.name]));
+        setAccounts(accountsResponse);
+        setRecurringTransactions(recurringResponse);
+        setTransactionAccount(accountsResponse[0]?.name ?? "");
+        setTransactions(
+          transactionsResponse.map((transaction) => ({
+            date: transaction.occurred_at.split("T")[0],
+            account: accountMap.get(transaction.account_id) ?? "Unknown",
+            type: transaction.transaction_type === "income" ? "Income" : "Expense",
+            amount: transaction.amount,
+            currency: transaction.currency_code,
+            status: "Cleared",
+          })),
+        );
+      } catch (err) {
+        if (isMounted) {
+          setError("Unable to load transactions.");
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+    loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const accountOptions = useMemo(
+    () => accounts.map((account) => account.name),
+    [accounts],
+  );
+
+  const accountGroups: Record<string, string> = useMemo(() => {
+    return accountOptions.reduce<Record<string, string>>((acc, accountName) => {
+      acc[accountName] = "Ungrouped";
+      return acc;
+    }, {});
+  }, [accountOptions]);
+
   const matchesSelection = (account: string) =>
     (selectedAccount === "All Accounts" || selectedAccount === account) &&
     (selectedGroup === "All Groups" || accountGroups[account] === selectedGroup);
-  const filteredTransactions = transactions.filter((row) =>
-    matchesSelection(row.account),
-  );
+  const filteredTransactions = transactions.filter((row) => matchesSelection(row.account));
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
   };
+
+  if (isLoading) {
+    return (
+      <section className="page">
+        <div className="card page-state">Loading transactions...</div>
+      </section>
+    );
+  }
+
+  if (error) {
+    return (
+      <section className="page">
+        <div className="card page-state error">{error}</div>
+      </section>
+    );
+  }
 
   return (
     <section className="page">
@@ -207,27 +285,18 @@ export default function TransactionsPage() {
           <span>Next run</span>
           <span>Status</span>
         </div>
-        {[
-          {
-            name: "Salary",
-            cadence: "Monthly",
-            next: "2026-05-01",
-            status: "Active",
-          },
-          {
-            name: "Rent",
-            cadence: "Monthly",
-            next: "2026-04-30",
-            status: "Active",
-          },
-        ].map((row) => (
-          <div className="list-row columns-4" key={row.name}>
-            <span>{row.name}</span>
-            <span>{row.cadence}</span>
-            <span>{row.next}</span>
-            <span className="status">{row.status}</span>
-          </div>
-        ))}
+        {recurringTransactions.length === 0 ? (
+          <div className="list-row columns-4 empty-state">No recurring schedules.</div>
+        ) : (
+          recurringTransactions.map((row) => (
+            <div className="list-row columns-4" key={row.id}>
+              <span>{row.description ?? "Recurring transaction"}</span>
+              <span>{`Every ${row.interval_days} days`}</span>
+              <span>{row.next_occurs_at.split("T")[0]}</span>
+              <span className="status">Active</span>
+            </div>
+          ))
+        )}
       </div>
       <div className="card list-card">
         <div className="list-row list-header columns-5">
@@ -237,25 +306,29 @@ export default function TransactionsPage() {
           <span>Amount ({displayCurrency})</span>
           <span>Status</span>
         </div>
-        {filteredTransactions.map((row) => (
-          <div className="list-row columns-5" key={`${row.date}-${row.amount}-${row.account}`}>
-            <span>{row.date}</span>
-            <span>{row.account}</span>
-            <span>{row.type}</span>
-            <span className="amount-cell">
-              <span>
-                {formatCurrency(
-                  convertAmount(row.amount, row.currency, displayCurrency),
-                  displayCurrency,
-                )}
+        {filteredTransactions.length === 0 ? (
+          <div className="list-row columns-5 empty-state">No transactions available.</div>
+        ) : (
+          filteredTransactions.map((row) => (
+            <div className="list-row columns-5" key={`${row.date}-${row.amount}-${row.account}`}>
+              <span>{row.date}</span>
+              <span>{row.account}</span>
+              <span>{row.type}</span>
+              <span className="amount-cell">
+                <span>
+                  {formatCurrency(
+                    convertAmount(row.amount, row.currency, displayCurrency),
+                    displayCurrency,
+                  )}
+                </span>
+                <span className="subtext">
+                  {formatCurrency(row.amount, row.currency)} {row.currency}
+                </span>
               </span>
-              <span className="subtext">
-                {formatCurrency(row.amount, row.currency)} {row.currency}
-              </span>
-            </span>
-            <span className="status">{row.status}</span>
-          </div>
-        ))}
+              <span className="status">{row.status}</span>
+            </div>
+          ))
+        )}
       </div>
     </section>
   );

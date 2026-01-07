@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
 import { BarChart, DonutChart, LineChart } from "../components/Charts";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
@@ -6,11 +6,64 @@ import KpiCard from "../components/KpiCard";
 import Modal from "../components/Modal";
 import { useCurrency } from "../components/CurrencyContext";
 import { useSelection } from "../components/SelectionContext";
+import { get } from "../utils/apiClient";
 import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
 
+type Account = {
+  id: string;
+  name: string;
+  currency_code: string;
+};
+
+type Asset = {
+  id: string;
+  account_id: string;
+  symbol: string;
+  asset_type: string;
+  quantity: number;
+  currency_code: string;
+};
+
+type Transaction = {
+  id: string;
+  account_id: string;
+  amount: number;
+  currency_code: string;
+  transaction_type: string;
+  description: string | null;
+  occurred_at: string;
+};
+
+type TotalsResponse = {
+  total: number;
+  currency_code: string;
+  totals_by_currency: { currency_code: string; total: number }[];
+};
+
+type HistoryPoint = {
+  date: string;
+  value: number;
+};
+
+type AssetDisplay = {
+  name: string;
+  amount: number;
+  currency: string;
+  account: string;
+};
+
+type TransactionDisplay = {
+  account: string;
+  type: string;
+  amount: number;
+  currency: string;
+  date: string;
+  notes: string;
+};
+
+const chartPalette = ["#7f5bff", "#5b6cff", "#43d6b1", "#f7b955", "#ff7aa2"];
+
 export default function DashboardPage() {
-  const accountOptions = ["Primary Account", "Retirement", "Side Hustle"];
-  const budgetCategories = ["Housing", "Investing", "Lifestyle", "Bills"];
   const { currency: displayCurrency } = useCurrency();
   const { account: selectedAccount, group: selectedGroup } = useSelection();
   const [range, setRange] = useState<DateRange>({
@@ -21,134 +74,179 @@ export default function DashboardPage() {
   const [refreshTick, setRefreshTick] = useState(0);
   const [isTransactionOpen, setIsTransactionOpen] = useState(false);
   const [isBudgetOpen, setIsBudgetOpen] = useState(false);
-  const [transactionAccount, setTransactionAccount] = useState(accountOptions[0]);
+  const [transactionAccount, setTransactionAccount] = useState("");
   const [transactionType, setTransactionType] = useState("Income");
   const [transactionAmount, setTransactionAmount] = useState("");
   const [transactionDate, setTransactionDate] = useState("2026-04-20");
   const [transactionNotes, setTransactionNotes] = useState("");
   const [transactionCurrency, setTransactionCurrency] = useState("USD");
-  const [budgetCategory, setBudgetCategory] = useState(budgetCategories[0]);
+  const [budgetCategory, setBudgetCategory] = useState("Housing");
   const [budgetAmount, setBudgetAmount] = useState("");
   const [budgetStart, setBudgetStart] = useState("2026-04-01");
-  const [transactions, setTransactions] = useState<
-    {
-      account: string;
-      type: string;
-      amount: number;
-      currency: string;
-      date: string;
-      notes: string;
-    }[]
-  >([
-    {
-      account: "Primary Account",
-      type: "Income",
-      amount: 2400,
-      currency: "USD",
-      date: "2026-04-18",
-      notes: "Salary",
-    },
-    {
-      account: "Retirement",
-      type: "Expense",
-      amount: 320,
-      currency: "USD",
-      date: "2026-04-16",
-      notes: "Broker fee",
-    },
-  ]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [transactions, setTransactions] = useState<TransactionDisplay[]>([]);
+  const [history, setHistory] = useState<HistoryPoint[]>([]);
+  const [totals, setTotals] = useState<TotalsResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const baseAssets = useMemo(
-    () => [
-      { name: "Cash", amount: 42000, currency: "USD", account: "Primary Account" },
-      { name: "Brokerage", amount: 56000, currency: "USD", account: "Retirement" },
-      { name: "Vacation Fund", amount: 18000, currency: "EUR", account: "Side Hustle" },
-    ],
-    [],
+  const budgetCategories = ["Housing", "Investing", "Lifestyle", "Bills"];
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadData = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const [accountsResponse, assetsResponse, transactionsResponse, totalsResponse, historyResponse] =
+          await Promise.all([
+            get<Account[]>("/api/accounts"),
+            get<Asset[]>("/api/assets"),
+            get<Transaction[]>("/api/transactions"),
+            get<TotalsResponse>("/api/totals"),
+            get<HistoryPoint[]>("/api/history"),
+          ]);
+        if (!isMounted) {
+          return;
+        }
+        const accountMap = new Map(accountsResponse.map((item) => [item.id, item.name]));
+        const mappedTransactions = transactionsResponse.map((item) => ({
+          account: accountMap.get(item.account_id) ?? "Unknown",
+          type: item.transaction_type === "income" ? "Income" : "Expense",
+          amount: item.amount,
+          currency: item.currency_code,
+          date: item.occurred_at.split("T")[0],
+          notes: item.description ?? "Manual entry",
+        }));
+
+        setAccounts(accountsResponse);
+        setAssets(assetsResponse);
+        setTransactions(mappedTransactions);
+        setTotals(totalsResponse);
+        setHistory(historyResponse);
+        setTransactionAccount(accountsResponse[0]?.name ?? "");
+      } catch (err) {
+        if (isMounted) {
+          setError("Unable to load dashboard data.");
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+    loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const accountOptions = useMemo(
+    () => accounts.map((item) => item.name),
+    [accounts],
   );
+
+  const baseAssets = useMemo<AssetDisplay[]>(
+    () =>
+      assets.map((asset) => ({
+        name: asset.symbol,
+        amount: asset.quantity,
+        currency: asset.currency_code,
+        account: accounts.find((account) => account.id === asset.account_id)?.name ?? "Unknown",
+      })),
+    [assets, accounts],
+  );
+
+  const accountGroups: Record<string, string> = useMemo(() => {
+    return baseAssets.reduce<Record<string, string>>((acc, asset) => {
+      acc[asset.account] = "Ungrouped";
+      return acc;
+    }, {});
+  }, [baseAssets]);
+
+  const matchesSelection = (account: string) =>
+    (selectedAccount === "All Accounts" || selectedAccount === account) &&
+    (selectedGroup === "All Groups" || accountGroups[account] === selectedGroup);
+
+  const filteredAssets = baseAssets.filter((asset) => matchesSelection(asset.account));
+  const filteredTransactions = transactions.filter((transaction) =>
+    matchesSelection(transaction.account),
+  );
+
+  const selectionScale = Math.max(0.4, filteredAssets.length / baseAssets.length || 1);
+
+  const lineSeries = useMemo(() => {
+    const fromDate = new Date(range.from);
+    const toDate = new Date(range.to);
+    const filtered = history.filter((point) => {
+      const date = new Date(point.date);
+      return date >= fromDate && date <= toDate;
+    });
+    const series = filtered.length > 0 ? filtered : history;
+    return series.map((point) => ({
+      date: point.date,
+      value: Math.round(point.value * (1 + refreshTick * 0.01) * selectionScale),
+    }));
+  }, [history, range.from, range.to, refreshTick, selectionScale]);
+
+  const barValues = useMemo(() => {
+    const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const now = new Date();
+    const days = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(now);
+      date.setDate(now.getDate() - (6 - index));
+      return date;
+    });
+    const totalsByDay = days.map((day) => {
+      const label = weekdays[day.getDay()];
+      const dateKey = day.toISOString().split("T")[0];
+      const total = filteredTransactions.reduce((sum, transaction) => {
+        if (transaction.date !== dateKey) {
+          return sum;
+        }
+        const signedAmount = transaction.type === "Expense" ? -transaction.amount : transaction.amount;
+        return sum + signedAmount;
+      }, 0);
+      return { label, value: Math.round(total) };
+    });
+    return totalsByDay;
+  }, [filteredTransactions]);
+
+  const donutValues = useMemo(() => {
+    const totalsByAccount = new Map<string, number>();
+    filteredAssets.forEach((asset) => {
+      totalsByAccount.set(
+        asset.account,
+        (totalsByAccount.get(asset.account) ?? 0) + asset.amount,
+      );
+    });
+    return Array.from(totalsByAccount.entries()).map(([label, value], index) => ({
+      label,
+      value,
+      color: chartPalette[index % chartPalette.length],
+    }));
+  }, [filteredAssets]);
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
   };
 
-  const baseSeries = useMemo(
-    () => [
-      { date: "2026-01-15", value: 52 },
-      { date: "2026-02-10", value: 60 },
-      { date: "2026-03-05", value: 68 },
-      { date: "2026-03-26", value: 64 },
-      { date: "2026-04-12", value: 71 },
-      { date: "2026-05-01", value: 78 },
-      { date: "2026-05-21", value: 83 },
-      { date: "2026-06-14", value: 79 },
-      { date: "2026-07-02", value: 88 },
-      { date: "2026-08-06", value: 94 },
-      { date: "2026-09-17", value: 102 },
-      { date: "2026-11-04", value: 110 },
-    ],
-    [],
-  );
-  const accountGroups: Record<string, string> = {
-    "Primary Account": "Cashflow",
-    Retirement: "Investments",
-    "Side Hustle": "Cashflow",
-  };
-  const matchesSelection = (account: string) =>
-    (selectedAccount === "All Accounts" || selectedAccount === account) &&
-    (selectedGroup === "All Groups" || accountGroups[account] === selectedGroup);
-  const filteredAssets = baseAssets.filter((asset) => matchesSelection(asset.account));
-  const filteredTransactions = transactions.filter((transaction) =>
-    matchesSelection(transaction.account),
-  );
-  const selectionScale = Math.max(0.4, filteredAssets.length / baseAssets.length || 1);
-  const lineSeries = useMemo(() => {
-    const fromDate = new Date(range.from);
-    const toDate = new Date(range.to);
-    const multiplier = 1 + refreshTick * 0.01;
-    const filtered = baseSeries.filter((point) => {
-      const date = new Date(point.date);
-      return date >= fromDate && date <= toDate;
-    });
-    const series = filtered.length > 0 ? filtered : baseSeries;
-    return series.map((point) => ({
-      date: point.date,
-      value: Math.round(point.value * multiplier * selectionScale),
-    }));
-  }, [baseSeries, range.from, range.to, refreshTick, selectionScale]);
-  const barValues = useMemo(
-    () => [
-      { label: "Mon", value: 10 },
-      { label: "Tue", value: 18 },
-      { label: "Wed", value: 14 },
-      { label: "Thu", value: 24 },
-      { label: "Fri", value: 20 },
-      { label: "Sat", value: 9 },
-      { label: "Sun", value: 12 },
-    ],
-    [],
-  );
-  const donutValues = useMemo(
-    () => [
-      { label: "Brokerage", value: 42, color: "#7f5bff" },
-      { label: "Retirement", value: 28, color: "#5b6cff" },
-      { label: "Cash", value: 15, color: "#43d6b1" },
-      { label: "Crypto", value: 9, color: "#f7b955" },
-    ],
-    [],
-  );
+  const totalAssets = totals
+    ? convertAmount(totals.total, totals.currency_code, displayCurrency)
+    : filteredAssets.reduce(
+        (sum, asset) => sum + convertAmount(asset.amount, asset.currency, displayCurrency),
+        0,
+      );
 
-  const totalAssets = filteredAssets.reduce(
-    (sum, asset) =>
-      sum + convertAmount(asset.amount, asset.currency, displayCurrency),
-    0,
-  );
   const netIncome = filteredTransactions.reduce((sum, transaction) => {
     const signedAmount = transaction.type === "Expense" ? -transaction.amount : transaction.amount;
     return sum + convertAmount(signedAmount, transaction.currency, displayCurrency);
   }, 0);
+
   const linePoints = lineSeries.map((point) => point.value);
-  const maxValue = Math.max(...linePoints);
-  const minValue = Math.min(...linePoints);
+  const maxValue = Math.max(...linePoints, 0);
+  const minValue = Math.min(...linePoints, 0);
   const midpointValue = Math.round((maxValue + minValue) / 2);
   const axisYLabels = [
     formatCurrency(maxValue, displayCurrency),
@@ -167,7 +265,7 @@ export default function DashboardPage() {
     rangeDays <= 45
       ? new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit" })
       : new Intl.DateTimeFormat("en-GB", { month: "2-digit", year: "numeric" });
-  const labelCount = Math.min(lineSeries.length, rangeDays <= 45 ? 6 : 5);
+  const labelCount = Math.min(lineSeries.length || 1, rangeDays <= 45 ? 6 : 5);
   const labelStep = labelCount > 1 ? (lineSeries.length - 1) / (labelCount - 1) : 0;
   const axisXLabels = Array.from({ length: labelCount }, (_, index) =>
     Math.round(index * labelStep),
@@ -175,6 +273,22 @@ export default function DashboardPage() {
     .filter((index, position, list) => list.indexOf(index) === position)
     .filter((index) => lineSeries[index])
     .map((index) => axisDateFormat.format(new Date(lineSeries[index].date)));
+
+  if (isLoading) {
+    return (
+      <section className="page">
+        <div className="card page-state">Loading dashboard data...</div>
+      </section>
+    );
+  }
+
+  if (error) {
+    return (
+      <section className="page">
+        <div className="card page-state error">{error}</div>
+      </section>
+    );
+  }
 
   return (
     <section className="page">
@@ -417,7 +531,7 @@ export default function DashboardPage() {
         <div className="card">
           <h3>Allocation</h3>
           <p className="muted">Account group distribution.</p>
-          <DonutChart values={donutValues} />
+          {donutValues.length ? <DonutChart values={donutValues} /> : <p className="muted">No assets yet.</p>}
           <div className="legend">
             {donutValues.map((item) => (
               <div key={item.label} className="legend-item">
@@ -465,28 +579,32 @@ export default function DashboardPage() {
           <span>Amount ({displayCurrency})</span>
           <span>Notes</span>
         </div>
-        {filteredTransactions.map((transaction) => (
-          <div
-            className="list-row columns-5"
-            key={`${transaction.date}-${transaction.amount}-${transaction.notes}`}
-          >
-            <span>{transaction.date}</span>
-            <span>{transaction.account}</span>
-            <span>{transaction.type}</span>
-            <span className="amount-cell">
-              <span>
-                {formatCurrency(
-                  convertAmount(transaction.amount, transaction.currency, displayCurrency),
-                  displayCurrency,
-                )}
+        {filteredTransactions.length === 0 ? (
+          <div className="list-row columns-5 empty-state">No transactions available.</div>
+        ) : (
+          filteredTransactions.map((transaction) => (
+            <div
+              className="list-row columns-5"
+              key={`${transaction.date}-${transaction.amount}-${transaction.notes}`}
+            >
+              <span>{transaction.date}</span>
+              <span>{transaction.account}</span>
+              <span>{transaction.type}</span>
+              <span className="amount-cell">
+                <span>
+                  {formatCurrency(
+                    convertAmount(transaction.amount, transaction.currency, displayCurrency),
+                    displayCurrency,
+                  )}
+                </span>
+                <span className="subtext">
+                  {formatCurrency(transaction.amount, transaction.currency)} {transaction.currency}
+                </span>
               </span>
-              <span className="subtext">
-                {formatCurrency(transaction.amount, transaction.currency)} {transaction.currency}
-              </span>
-            </span>
-            <span>{transaction.notes}</span>
-          </div>
-        ))}
+              <span>{transaction.notes}</span>
+            </div>
+          ))
+        )}
       </div>
     </section>
   );

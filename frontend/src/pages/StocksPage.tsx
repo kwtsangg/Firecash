@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
 import { BarChart, DonutChart, LineChart } from "../components/Charts";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
@@ -6,14 +6,34 @@ import KpiCard from "../components/KpiCard";
 import Modal from "../components/Modal";
 import { useCurrency } from "../components/CurrencyContext";
 import { useSelection } from "../components/SelectionContext";
+import { get } from "../utils/apiClient";
 import { convertAmount, formatCurrency } from "../utils/currency";
+
+type Account = {
+  id: string;
+  name: string;
+};
+
+type Asset = {
+  id: string;
+  account_id: string;
+  symbol: string;
+  asset_type: string;
+  quantity: number;
+  currency_code: string;
+};
+
+type HistoryPoint = {
+  date: string;
+  value: number;
+};
 
 type Holding = {
   id: string;
   ticker: string;
   shares: number;
-  avgEntry: number;
-  price: number;
+  avgEntry: number | null;
+  price: number | null;
   change: number;
   currency: string;
   account: string;
@@ -24,7 +44,7 @@ type Trade = {
   id: string;
   ticker: string;
   shares: number;
-  price: number;
+  price: number | null;
   currency: string;
   account: string;
   date: string;
@@ -32,8 +52,6 @@ type Trade = {
 };
 
 export default function StocksPage() {
-  const accountOptions = ["Primary Account", "Retirement", "HKD Growth"];
-  const supportedTickers = new Set(["AAPL", "TSLA", "0700.HK", "MSFT", "NVDA"]);
   const { currency: displayCurrency } = useCurrency();
   const { account: selectedAccount, group: selectedGroup } = useSelection();
   const [toast, setToast] = useState<ActionToastData | null>(null);
@@ -46,130 +64,107 @@ export default function StocksPage() {
   const [holdingShares, setHoldingShares] = useState("");
   const [holdingPrice, setHoldingPrice] = useState("");
   const [holdingDate, setHoldingDate] = useState("2026-04-20");
-  const [holdingAccount, setHoldingAccount] = useState(accountOptions[0]);
-  const [holdings, setHoldings] = useState<Holding[]>([
-    {
-      id: "AAPL-2026-01-15",
-      ticker: "AAPL",
-      shares: 42,
-      avgEntry: 168.2,
-      price: 182.14,
-      change: 1.4,
-      currency: "USD",
-      account: "Primary Account",
-      entryDate: "2026-01-15",
-    },
-    {
-      id: "TSLA-2026-02-11",
-      ticker: "TSLA",
-      shares: 16,
-      avgEntry: 192.4,
-      price: 175.22,
-      change: -0.6,
-      currency: "USD",
-      account: "Retirement",
-      entryDate: "2026-02-11",
-    },
-    {
-      id: "0700.HK-2026-03-03",
-      ticker: "0700.HK",
-      shares: 55,
-      avgEntry: 282.1,
-      price: 296.1,
-      change: 0.9,
-      currency: "HKD",
-      account: "HKD Growth",
-      entryDate: "2026-03-03",
-    },
-  ]);
-  const [trades, setTrades] = useState<Trade[]>([
-    {
-      id: "trade-aapl-2026-01-15",
-      ticker: "AAPL",
-      shares: 42,
-      price: 168.2,
-      currency: "USD",
-      account: "Primary Account",
-      date: "2026-01-15",
-      side: "Buy",
-    },
-    {
-      id: "trade-tsla-2026-02-11",
-      ticker: "TSLA",
-      shares: 16,
-      price: 192.4,
-      currency: "USD",
-      account: "Retirement",
-      date: "2026-02-11",
-      side: "Buy",
-    },
-    {
-      id: "trade-0700-2026-03-03",
-      ticker: "0700.HK",
-      shares: 55,
-      price: 282.1,
-      currency: "HKD",
-      account: "HKD Growth",
-      date: "2026-03-03",
-      side: "Buy",
-    },
-  ]);
+  const [holdingAccount, setHoldingAccount] = useState("");
+  const [holdings, setHoldings] = useState<Holding[]>([]);
+  const [trades, setTrades] = useState<Trade[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [history, setHistory] = useState<HistoryPoint[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadData = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const [accountsResponse, assetsResponse, historyResponse] = await Promise.all([
+          get<Account[]>("/api/accounts"),
+          get<Asset[]>("/api/assets"),
+          get<HistoryPoint[]>("/api/history"),
+        ]);
+        if (!isMounted) {
+          return;
+        }
+        const accountMap = new Map(accountsResponse.map((item) => [item.id, item.name]));
+        const mappedHoldings = assetsResponse.map((asset) => ({
+          id: asset.id,
+          ticker: asset.symbol,
+          shares: asset.quantity,
+          avgEntry: null,
+          price: null,
+          change: 0,
+          currency: asset.currency_code,
+          account: accountMap.get(asset.account_id) ?? "Unknown",
+          entryDate: "-",
+        }));
+        setAccounts(accountsResponse);
+        setHoldings(mappedHoldings);
+        setHistory(historyResponse);
+        setHoldingAccount(accountsResponse[0]?.name ?? "");
+        setTrades([]);
+      } catch (err) {
+        if (isMounted) {
+          setError("Unable to load stock data.");
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+    loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const accountOptions = useMemo(
+    () => accounts.map((account) => account.name),
+    [accounts],
+  );
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
   };
 
-  const performanceSeries = useMemo(
-    () => [
-      { date: "2026-01-08", value: 120 },
-      { date: "2026-01-28", value: 132 },
-      { date: "2026-02-18", value: 128 },
-      { date: "2026-03-10", value: 136 },
-      { date: "2026-03-22", value: 142 },
-      { date: "2026-04-02", value: 150 },
-      { date: "2026-04-18", value: 147 },
-      { date: "2026-05-06", value: 158 },
-      { date: "2026-06-12", value: 162 },
-      { date: "2026-07-08", value: 171 },
-      { date: "2026-08-14", value: 176 },
-      { date: "2026-09-03", value: 188 },
-    ],
-    [],
-  );
-  const accountGroups: Record<string, string> = {
-    "Primary Account": "Cashflow",
-    Retirement: "Investments",
-    "HKD Growth": "Investments",
-  };
+  const performanceSeries = useMemo(() => {
+    const fromDate = new Date(range.from);
+    const toDate = new Date(range.to);
+    const filtered = history.filter((point) => {
+      const date = new Date(point.date);
+      return date >= fromDate && date <= toDate;
+    });
+    return filtered.length > 0 ? filtered : history;
+  }, [history, range.from, range.to]);
+
+  const accountGroups: Record<string, string> = useMemo(() => {
+    return accountOptions.reduce<Record<string, string>>((acc, accountName) => {
+      acc[accountName] = "Ungrouped";
+      return acc;
+    }, {});
+  }, [accountOptions]);
+
   const matchesSelection = (account: string) =>
     (selectedAccount === "All Accounts" || selectedAccount === account) &&
     (selectedGroup === "All Groups" || accountGroups[account] === selectedGroup);
-  const filteredHoldings = holdings.filter((holding) =>
-    matchesSelection(holding.account),
-  );
+  const filteredHoldings = holdings.filter((holding) => matchesSelection(holding.account));
   const filteredTrades = trades.filter((trade) => matchesSelection(trade.account));
   const selectionScale = Math.max(0.4, filteredHoldings.length / holdings.length || 1);
-  const performanceSeriesFiltered = useMemo(() => {
-    const fromDate = new Date(range.from);
-    const toDate = new Date(range.to);
-    const filtered = performanceSeries
-      .filter((point) => {
-        const date = new Date(point.date);
-        return date >= fromDate && date <= toDate;
-      });
-    return filtered.length > 0 ? filtered : performanceSeries;
-  }, [performanceSeries, range.from, range.to]);
-  const performancePoints = performanceSeriesFiltered.map((point) =>
+  const performancePoints = performanceSeries.map((point) =>
     Math.round(point.value * selectionScale),
   );
-  const performanceMax = Math.max(...performancePoints);
-  const performanceMin = Math.min(...performancePoints);
+  const performanceMax = Math.max(...performancePoints, 0);
+  const performanceMin = Math.min(...performancePoints, 0);
   const performanceMidpoint = Math.round((performanceMax + performanceMin) / 2);
   const performanceYLabels = [
     formatCurrency(performanceMax, displayCurrency),
     formatCurrency(Math.round(performanceMax * 0.75), displayCurrency),
     formatCurrency(performanceMidpoint, displayCurrency),
-    formatCurrency(Math.round(performanceMin + (performanceMax - performanceMin) * 0.25), displayCurrency),
+    formatCurrency(
+      Math.round(performanceMin + (performanceMax - performanceMin) * 0.25),
+      displayCurrency,
+    ),
     formatCurrency(performanceMin, displayCurrency),
   ];
   const rangeDays = Math.max(
@@ -182,48 +177,82 @@ export default function StocksPage() {
     rangeDays <= 45
       ? new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit" })
       : new Intl.DateTimeFormat("en-GB", { month: "2-digit", year: "numeric" });
-  const labelCount = Math.min(performanceSeriesFiltered.length, rangeDays <= 45 ? 6 : 5);
+  const labelCount = Math.min(performanceSeries.length || 1, rangeDays <= 45 ? 6 : 5);
   const labelStep =
-    labelCount > 1 ? (performanceSeriesFiltered.length - 1) / (labelCount - 1) : 0;
+    labelCount > 1 ? (performanceSeries.length - 1) / (labelCount - 1) : 0;
   const performanceXLabels = Array.from({ length: labelCount }, (_, index) =>
     Math.round(index * labelStep),
   )
     .filter((index, position, list) => list.indexOf(index) === position)
-    .filter((index) => performanceSeriesFiltered[index])
-    .map((index) => axisDateFormat.format(new Date(performanceSeriesFiltered[index].date)));
+    .filter((index) => performanceSeries[index])
+    .map((index) => axisDateFormat.format(new Date(performanceSeries[index].date)));
+
   const dividendBars = useMemo(
-    () => [
-      { label: "Jan", value: 240 },
-      { label: "Feb", value: 180 },
-      { label: "Mar", value: 320 },
-      { label: "Apr", value: 210 },
-    ],
+    () =>
+      [
+        { label: "Jan", value: 240 },
+        { label: "Feb", value: 180 },
+        { label: "Mar", value: 320 },
+        { label: "Apr", value: 210 },
+      ],
     [],
   );
+
   const sectorMix = useMemo(
-    () => [
-      { label: "Tech", value: 45, color: "#7f5bff" },
-      { label: "Healthcare", value: 22, color: "#43d6b1" },
-      { label: "Finance", value: 18, color: "#f7b955" },
-      { label: "Energy", value: 15, color: "#5b6cff" },
-    ],
+    () =>
+      [
+        { label: "Tech", value: 45, color: "#7f5bff" },
+        { label: "Healthcare", value: 22, color: "#43d6b1" },
+        { label: "Finance", value: 18, color: "#f7b955" },
+        { label: "Energy", value: 15, color: "#5b6cff" },
+      ],
     [],
   );
-  const totalEquity = filteredHoldings.reduce(
-    (sum, holding) =>
-      sum + convertAmount(holding.price * holding.shares, holding.currency, displayCurrency),
-    0,
-  );
+
+  const totalEquity = filteredHoldings.reduce((sum, holding) => {
+    if (!holding.price) {
+      return sum;
+    }
+    return (
+      sum +
+      convertAmount(holding.price * holding.shares, holding.currency, displayCurrency)
+    );
+  }, 0);
+
   const dayChange = filteredHoldings.reduce((sum, holding) => {
+    if (!holding.price) {
+      return sum;
+    }
     const holdingValue = holding.price * holding.shares;
     const changeValue = (holding.change / 100) * holdingValue;
     return sum + convertAmount(changeValue, holding.currency, displayCurrency);
   }, 0);
-  const totalMarketValue = filteredHoldings.reduce(
-    (sum, holding) =>
-      sum + convertAmount(holding.price * holding.shares, holding.currency, displayCurrency),
-    0,
-  );
+
+  const totalMarketValue = filteredHoldings.reduce((sum, holding) => {
+    if (!holding.price) {
+      return sum;
+    }
+    return (
+      sum +
+      convertAmount(holding.price * holding.shares, holding.currency, displayCurrency)
+    );
+  }, 0);
+
+  if (isLoading) {
+    return (
+      <section className="page">
+        <div className="card page-state">Loading stocks...</div>
+      </section>
+    );
+  }
+
+  if (error) {
+    return (
+      <section className="page">
+        <div className="card page-state error">{error}</div>
+      </section>
+    );
+  }
 
   return (
     <section className="page">
@@ -243,17 +272,6 @@ export default function StocksPage() {
           <button
             className="pill"
             onClick={() => {
-              setHoldings((prev) =>
-                prev.map((holding) => {
-                  const updatedPrice = Number((holding.price * 1.01).toFixed(2));
-                  const updatedChange = Number((holding.change + 0.4).toFixed(1));
-                  return {
-                    ...holding,
-                    price: updatedPrice,
-                    change: updatedChange,
-                  };
-                }),
-              );
               showToast("Quotes syncing", "Refreshing stock prices.");
             }}
           >
@@ -276,16 +294,16 @@ export default function StocksPage() {
               type="button"
               onClick={() => {
                 const normalizedTicker = holdingTicker.trim().toUpperCase();
-                if (!normalizedTicker || !supportedTickers.has(normalizedTicker)) {
-                  showToast("Ticker not found", "Select a supported symbol to continue.");
+                if (!normalizedTicker) {
+                  showToast("Ticker required", "Enter a ticker symbol to continue.");
                   return;
                 }
                 const shares = Number(holdingShares);
-                const price = Number(holdingPrice);
-                if (!shares || !price) {
-                  showToast("Missing details", "Enter shares and price to save.");
+                if (!shares) {
+                  showToast("Missing details", "Enter shares to save.");
                   return;
                 }
+                const price = holdingPrice ? Number(holdingPrice) : null;
                 setHoldings((prev) => [
                   {
                     id: `${normalizedTicker}-${Date.now()}`,
@@ -455,31 +473,35 @@ export default function StocksPage() {
           <span>Day Change</span>
           <span>Account</span>
         </div>
-        {filteredHoldings.map((row) => (
-          <div className="list-row columns-7" key={row.id}>
-            <span>{row.ticker}</span>
-            <span>{row.shares}</span>
-            <span>
-              {row.currency === "HKD" ? "HK$" : "$"}
-              {row.avgEntry.toFixed(2)}
-            </span>
-            <span>
-              {row.currency === "HKD" ? "HK$" : "$"}
-              {row.price.toFixed(2)}
-            </span>
-            <span>
-              {formatCurrency(
-                convertAmount(row.price * row.shares, row.currency, displayCurrency),
-                displayCurrency,
-              )}
-            </span>
-            <span className={row.change < 0 ? "status warn" : "status"}>
-              {row.change > 0 ? "+" : ""}
-              {row.change.toFixed(1)}%
-            </span>
-            <span>{row.account}</span>
-          </div>
-        ))}
+        {filteredHoldings.length === 0 ? (
+          <div className="list-row columns-7 empty-state">No holdings available.</div>
+        ) : (
+          filteredHoldings.map((row) => (
+            <div className="list-row columns-7" key={row.id}>
+              <span>{row.ticker}</span>
+              <span>{row.shares}</span>
+              <span>
+                {row.avgEntry === null ? "—" : formatCurrency(row.avgEntry, row.currency)}
+              </span>
+              <span>
+                {row.price === null ? "—" : formatCurrency(row.price, row.currency)}
+              </span>
+              <span>
+                {row.price === null
+                  ? "—"
+                  : formatCurrency(
+                      convertAmount(row.price * row.shares, row.currency, displayCurrency),
+                      displayCurrency,
+                    )}
+              </span>
+              <span className={row.change < 0 ? "status warn" : "status"}>
+                {row.change > 0 ? "+" : ""}
+                {row.change.toFixed(1)}%
+              </span>
+              <span>{row.account}</span>
+            </div>
+          ))
+        )}
         <div className="list-row columns-7 summary-row">
           <span>Total</span>
           <span>-</span>
@@ -505,20 +527,26 @@ export default function StocksPage() {
           <span>Price</span>
           <span>Account</span>
         </div>
-        {filteredTrades.map((trade) => (
-          <div className="list-row columns-6" key={trade.id}>
-            <span>{trade.date}</span>
-            <span className={trade.side === "Sell" ? "status warn" : "status"}>
-              {trade.side}
-            </span>
-            <span>{trade.ticker}</span>
-            <span>{trade.shares}</span>
-            <span>
-              {formatCurrency(trade.price, trade.currency)} {trade.currency}
-            </span>
-            <span>{trade.account}</span>
-          </div>
-        ))}
+        {filteredTrades.length === 0 ? (
+          <div className="list-row columns-6 empty-state">No trades recorded.</div>
+        ) : (
+          filteredTrades.map((trade) => (
+            <div className="list-row columns-6" key={trade.id}>
+              <span>{trade.date}</span>
+              <span className={trade.side === "Sell" ? "status warn" : "status"}>
+                {trade.side}
+              </span>
+              <span>{trade.ticker}</span>
+              <span>{trade.shares}</span>
+              <span>
+                {trade.price === null
+                  ? "—"
+                  : `${formatCurrency(trade.price, trade.currency)} ${trade.currency}`}
+              </span>
+              <span>{trade.account}</span>
+            </div>
+          ))
+        )}
       </div>
       <div className="card">
         <h3>Action center</h3>

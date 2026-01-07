@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
 import { useAuth } from "../components/AuthContext";
 import { ApiError, get, put } from "../utils/apiClient";
+import { readCategories, storeCategories } from "../utils/categories";
 
 type UserProfile = {
   id: string;
@@ -17,6 +18,8 @@ export default function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [categories, setCategories] = useState<string[]>(() => readCategories());
+  const [categoryName, setCategoryName] = useState("");
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
@@ -48,6 +51,10 @@ export default function SettingsPage() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    storeCategories(categories);
+  }, [categories]);
 
   return (
     <section className="page">
@@ -143,6 +150,74 @@ export default function SettingsPage() {
           >
             Sync FX rates
           </button>
+        </div>
+        <div className="card">
+          <h3>Data management</h3>
+          <p className="muted">Export reports or clean up local settings.</p>
+          <div className="action-grid">
+            <button
+              className="pill"
+              onClick={() => showToast("Export queued", "Transactions export will download shortly.")}
+            >
+              Export transactions
+            </button>
+            <button
+              className="pill"
+              onClick={() => showToast("Export queued", "Dashboard export will download shortly.")}
+            >
+              Export dashboard
+            </button>
+          </div>
+        </div>
+        <div className="card">
+          <h3>Categories</h3>
+          <p className="muted">Create and manage transaction categories.</p>
+          <div className="category-manager">
+            <input
+              type="text"
+              placeholder="New category"
+              value={categoryName}
+              onChange={(event) => setCategoryName(event.target.value)}
+            />
+            <button
+              className="pill"
+              type="button"
+              onClick={() => {
+                const trimmed = categoryName.trim();
+                if (!trimmed) {
+                  showToast("Missing category", "Enter a category name to save.");
+                  return;
+                }
+                if (categories.some((category) => category.toLowerCase() === trimmed.toLowerCase())) {
+                  showToast("Category exists", "Choose a new category name.");
+                  return;
+                }
+                setCategories((prev) => [...prev, trimmed]);
+                setCategoryName("");
+                showToast("Category added", `${trimmed} is ready to use.`);
+              }}
+            >
+              Add Category
+            </button>
+          </div>
+          <div className="chip-grid">
+            {categories.map((category) => (
+              <div className="chip" key={category}>
+                <span>{category}</span>
+                <button
+                  type="button"
+                  className="chip-action"
+                  onClick={() => {
+                    const updated = categories.filter((item) => item !== category);
+                    setCategories(updated.length ? updated : ["General"]);
+                  }}
+                  aria-label={`Remove ${category}`}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </section>

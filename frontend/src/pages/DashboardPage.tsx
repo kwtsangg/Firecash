@@ -98,7 +98,7 @@ export default function DashboardPage() {
   const [transactionDate, setTransactionDate] = useState(() => toDateInputValue(new Date()));
   const [transactionNotes, setTransactionNotes] = useState("");
   const [transactionCurrency, setTransactionCurrency] = useState("USD");
-  const [categories] = useState(() => readCategories());
+  const [categories, setCategories] = useState(() => readCategories());
   const [transactionCategory, setTransactionCategory] = useState(() => categories[0] ?? "General");
   const [budgetCategory, setBudgetCategory] = useState("Housing");
   const [budgetAmount, setBudgetAmount] = useState("");
@@ -181,6 +181,12 @@ export default function DashboardPage() {
       setTransactionCategory(categories[0] ?? "General");
     }
   }, [categories, transactionCategory]);
+
+  useEffect(() => {
+    if (isTransactionOpen) {
+      setCategories(readCategories());
+    }
+  }, [isTransactionOpen]);
 
   const accountOptions = useMemo(
     () => accounts.map((item) => ({ id: item.id, name: item.name })),
@@ -634,12 +640,6 @@ export default function DashboardPage() {
       <div className="card">
         <h3>Quick actions</h3>
         <div className="action-grid">
-          <button
-            className="pill"
-            onClick={() => showToast("Export queued", "CSV export will download shortly.")}
-          >
-            Export CSV
-          </button>
           <button
             className="pill"
             onClick={() => showToast("Group creator ready", "Name your new group.")}

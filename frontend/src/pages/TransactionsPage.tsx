@@ -5,7 +5,7 @@ import Modal from "../components/Modal";
 import { useCurrency } from "../components/CurrencyContext";
 import { useSelection } from "../components/SelectionContext";
 import { get, post } from "../utils/apiClient";
-import { readCategories, storeCategories } from "../utils/categories";
+import { readCategories } from "../utils/categories";
 import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
 import {
   formatDateDisplay,
@@ -64,7 +64,6 @@ export default function TransactionsPage() {
   const [transactionCurrency, setTransactionCurrency] = useState("USD");
   const [transactionCategory, setTransactionCategory] = useState("General");
   const [categories, setCategories] = useState<string[]>(() => readCategories());
-  const [categoryName, setCategoryName] = useState("");
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -129,8 +128,10 @@ export default function TransactionsPage() {
   }, [accountOptions]);
 
   useEffect(() => {
-    storeCategories(categories);
-  }, [categories]);
+    if (isTransactionOpen) {
+      setCategories(readCategories());
+    }
+  }, [isTransactionOpen]);
 
   useEffect(() => {
     if (!categories.includes(transactionCategory)) {
@@ -197,26 +198,6 @@ export default function TransactionsPage() {
     }
   };
 
-  const handleAddCategory = () => {
-    const trimmed = categoryName.trim();
-    if (!trimmed) {
-      showToast("Missing category", "Enter a category name to save.");
-      return;
-    }
-    if (categories.some((category) => category.toLowerCase() === trimmed.toLowerCase())) {
-      showToast("Category exists", "Choose a new category name.");
-      return;
-    }
-    setCategories((prev) => [...prev, trimmed]);
-    setCategoryName("");
-    showToast("Category added", `${trimmed} is ready to use.`);
-  };
-
-  const handleRemoveCategory = (category: string) => {
-    const updated = categories.filter((item) => item !== category);
-    setCategories(updated.length ? updated : ["General"]);
-  };
-
   if (isLoading) {
     return (
       <section className="page">
@@ -242,12 +223,6 @@ export default function TransactionsPage() {
         </div>
         <div className="toolbar">
           <DateRangePicker value={range} onChange={setRange} />
-          <button
-            className="pill"
-            onClick={() => showToast("Export queued", "Transactions will download shortly.")}
-          >
-            Export CSV
-          </button>
           <button
             className="pill primary"
             onClick={() => setIsTransactionOpen(true)}
@@ -386,40 +361,6 @@ export default function TransactionsPage() {
             </div>
           ))
         )}
-      </div>
-      <div className="card">
-        <div className="card-header">
-          <div>
-            <h3>Categories</h3>
-            <p className="muted">Create and manage transaction categories.</p>
-          </div>
-        </div>
-        <div className="category-manager">
-          <input
-            type="text"
-            placeholder="New category"
-            value={categoryName}
-            onChange={(event) => setCategoryName(event.target.value)}
-          />
-          <button className="pill" type="button" onClick={handleAddCategory}>
-            Add Category
-          </button>
-        </div>
-        <div className="chip-grid">
-          {categories.map((category) => (
-            <div className="chip" key={category}>
-              <span>{category}</span>
-              <button
-                type="button"
-                className="chip-action"
-                onClick={() => handleRemoveCategory(category)}
-                aria-label={`Remove ${category}`}
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
       </div>
       <div className="card list-card">
         <div className="list-row list-header columns-6">

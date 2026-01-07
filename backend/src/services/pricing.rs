@@ -1,28 +1,18 @@
-use reqwest::{header, Client, Url};
-use serde::Deserialize;
+use reqwest::{header, Client};
+use serde::Serialize;
 use sqlx::{postgres::PgPool, QueryBuilder, Row};
 use std::collections::HashMap;
 use std::io::{Error as IoError, ErrorKind};
-use tracing::{info, warn};
+use tracing::warn;
 use uuid::Uuid;
 
-#[derive(Deserialize)]
-struct QuoteResponse {
-    #[serde(rename = "quoteResponse")]
-    quote_response: QuoteResult,
-}
-
-#[derive(Deserialize)]
-struct QuoteResult {
-    result: Vec<QuoteItem>,
-}
-
-#[derive(Deserialize)]
-struct QuoteItem {
-    symbol: String,
-    #[serde(rename = "regularMarketPrice")]
-    regular_market_price: Option<f64>,
-    currency: Option<String>,
+#[derive(Serialize)]
+pub struct Candle {
+    pub date: String,
+    pub open: f64,
+    pub high: f64,
+    pub low: f64,
+    pub close: f64,
 }
 
 pub async fn refresh_asset_prices(
@@ -64,54 +54,11 @@ pub async fn refresh_asset_prices(
     let mut updated = 0usize;
 
     for chunk in symbols.chunks(50) {
-        let symbols = chunk.join(",");
-        let url = Url::parse_with_params(
-            "https://query1.finance.yahoo.com/v7/finance/quote",
-            &[("symbols", symbols)],
-        )?;
-        let response = client
-            .get(url)
-            .header(header::USER_AGENT, "firecash-api")
-            .send()
-            .await?;
-        if response.status() == reqwest::StatusCode::UNAUTHORIZED
-            || response.status() == reqwest::StatusCode::FORBIDDEN
-        {
-            info!(
-                status = %response.status(),
-                "quote request unauthorized; falling back to stooq"
-            );
-            let fallback_prices = fetch_stooq_prices(&client, chunk).await?;
-            if fallback_prices.is_empty() {
-                warn!("stooq fallback returned no prices");
-                return Ok(updated);
-            }
-            updated += apply_prices(pool, &symbol_map, &currency_map, fallback_prices).await?;
+        let prices = fetch_stooq_prices(&client, chunk).await?;
+        if prices.is_empty() {
+            warn!("stooq returned no prices for {}", chunk.join(","));
             continue;
         }
-        if !response.status().is_success() {
-            return Err(Box::new(IoError::new(
-                ErrorKind::Other,
-                format!("quote request failed: {}", response.status()),
-            )));
-        }
-        let body = response.text().await?;
-        let payload: QuoteResponse = serde_json::from_str(&body).map_err(|err| {
-            IoError::new(
-                ErrorKind::Other,
-                format!("failed to decode quote response: {err}. body: {body}"),
-            )
-        })?;
-        let prices = payload
-            .quote_response
-            .result
-            .into_iter()
-            .filter_map(|quote| {
-                let price = quote.regular_market_price?;
-                let currency = quote.currency.unwrap_or_else(|| "USD".to_string());
-                Some((quote.symbol, (price, currency)))
-            })
-            .collect();
         updated += apply_prices(pool, &symbol_map, &currency_map, prices).await?;
     }
 
@@ -181,11 +128,55 @@ async fn fetch_stooq_prices(
         }
         let close = parts[6].trim().parse::<f64>();
         if let Ok(price) = close {
-            let currency = if symbol.ends_with(".HK") { "HKD" } else { "USD" };
-            prices.insert(symbol.clone(), (price, currency.to_string()));
+            let currency = currency_from_symbol(symbol);
+            prices.insert(symbol.clone(), (price, currency));
         }
     }
     Ok(prices)
+}
+
+pub async fn fetch_stooq_candles(
+    symbol: &str,
+) -> Result<Vec<Candle>, Box<dyn std::error::Error + Send + Sync>> {
+    let lookup = stooq_symbol(symbol);
+    let url = format!("https://stooq.com/q/d/l/?s={lookup}&i=d");
+    let client = Client::new();
+    let response = client
+        .get(url)
+        .header(header::USER_AGENT, "firecash-api")
+        .send()
+        .await?;
+    if !response.status().is_success() {
+        return Err(Box::new(IoError::new(
+            ErrorKind::Other,
+            format!("stooq candle request failed: {}", response.status()),
+        )));
+    }
+    let body = response.text().await?;
+    let mut lines = body.lines();
+    let _header = lines.next();
+    let mut candles = Vec::new();
+    for line in lines {
+        let parts: Vec<&str> = line.split(',').collect();
+        if parts.len() < 5 {
+            continue;
+        }
+        let date = parts[0].to_string();
+        let open = parts[1].parse::<f64>();
+        let high = parts[2].parse::<f64>();
+        let low = parts[3].parse::<f64>();
+        let close = parts[4].parse::<f64>();
+        if let (Ok(open), Ok(high), Ok(low), Ok(close)) = (open, high, low, close) {
+            candles.push(Candle {
+                date,
+                open,
+                high,
+                low,
+                close,
+            });
+        }
+    }
+    Ok(candles)
 }
 
 fn stooq_symbol(symbol: &str) -> String {
@@ -193,5 +184,50 @@ fn stooq_symbol(symbol: &str) -> String {
         symbol.to_lowercase()
     } else {
         format!("{}.us", symbol.to_lowercase())
+    }
+}
+
+fn currency_from_symbol(symbol: &str) -> String {
+    let symbol = symbol.to_uppercase();
+    if symbol.ends_with(".HK") {
+        "HKD".to_string()
+    } else if symbol.ends_with(".JP") {
+        "JPY".to_string()
+    } else if symbol.ends_with(".L") {
+        "GBP".to_string()
+    } else if symbol.ends_with(".TO") {
+        "CAD".to_string()
+    } else if symbol.ends_with(".SW") {
+        "CHF".to_string()
+    } else if symbol.ends_with(".DE") || symbol.ends_with(".EU") {
+        "EUR".to_string()
+    } else {
+        "USD".to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{currency_from_symbol, stooq_symbol};
+
+    #[test]
+    fn stooq_symbol_defaults_to_us() {
+        assert_eq!(stooq_symbol("AAPL"), "aapl.us");
+    }
+
+    #[test]
+    fn stooq_symbol_preserves_exchange_suffix() {
+        assert_eq!(stooq_symbol("0700.HK"), "0700.hk");
+    }
+
+    #[test]
+    fn currency_mapping_handles_exchange_suffixes() {
+        assert_eq!(currency_from_symbol("0700.HK"), "HKD");
+        assert_eq!(currency_from_symbol("7203.JP"), "JPY");
+        assert_eq!(currency_from_symbol("VOD.L"), "GBP");
+        assert_eq!(currency_from_symbol("RY.TO"), "CAD");
+        assert_eq!(currency_from_symbol("NESN.SW"), "CHF");
+        assert_eq!(currency_from_symbol("BMW.DE"), "EUR");
+        assert_eq!(currency_from_symbol("AAPL"), "USD");
     }
 }

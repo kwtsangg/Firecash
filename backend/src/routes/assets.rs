@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::{
     auth::AuthenticatedUser,
     models::{Asset, CreateAssetRequest, UpdateAssetRequest, UpdateAssetResponse},
-    services::pricing::refresh_asset_prices,
+    services::pricing::{fetch_stooq_candles, refresh_asset_prices, Candle},
     state::AppState,
 };
 
@@ -43,6 +43,17 @@ pub struct AssetPrice {
 #[derive(serde::Serialize)]
 pub struct RefreshPricesResponse {
     pub updated: usize,
+}
+
+#[derive(serde::Deserialize)]
+pub struct CandleQuery {
+    pub symbol: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct CandleResponse {
+    pub symbol: String,
+    pub candles: Vec<Candle>,
 }
 
 pub async fn list_assets(
@@ -223,6 +234,19 @@ pub async fn refresh_prices(
         .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
 
     Ok(Json(RefreshPricesResponse { updated }))
+}
+
+pub async fn list_candles(
+    Query(query): Query<CandleQuery>,
+) -> Result<Json<CandleResponse>, (axum::http::StatusCode, String)> {
+    let symbol = query.symbol.trim().to_uppercase();
+    if symbol.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "symbol is required".into()));
+    }
+    let candles = fetch_stooq_candles(&symbol)
+        .await
+        .map_err(|err| (StatusCode::BAD_REQUEST, err.to_string()))?;
+    Ok(Json(CandleResponse { symbol, candles }))
 }
 
 pub async fn create_asset(

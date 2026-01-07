@@ -86,6 +86,7 @@ async fn main() {
         .route("/api/assets/prices", get(routes::assets::list_asset_prices))
         .route("/api/assets/price-status", get(routes::assets::asset_price_status))
         .route("/api/assets/refresh-prices", post(routes::assets::refresh_prices))
+        .route("/api/assets/candles", get(routes::assets::list_candles))
         .route(
             "/api/assets/{id}",
             put(routes::assets::update_asset).delete(routes::assets::delete_asset),

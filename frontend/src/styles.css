@@ -281,6 +281,11 @@ a {
   color: inherit;
 }
 
+.input-helper {
+  font-size: 11px;
+  color: #9aa3ba;
+}
+
 .preset-buttons {
   display: flex;
   gap: 8px;
@@ -352,6 +357,23 @@ a {
 .chart-grid-minor {
   stroke: rgba(255, 255, 255, 0.08);
   stroke-width: 0.4;
+}
+
+.candlestick-wick {
+  stroke: rgba(255, 255, 255, 0.6);
+  stroke-width: 0.6;
+}
+
+.candlestick-body {
+  stroke: none;
+}
+
+.candlestick-body.up {
+  fill: #43d6b1;
+}
+
+.candlestick-body.down {
+  fill: #ff7a7a;
 }
 
 .bar-chart {
@@ -451,6 +473,34 @@ a {
 .list-card {
   display: grid;
   gap: 12px;
+}
+
+.list-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.table {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.table-row {
+  display: grid;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 12px;
+}
+
+.table-header {
+  color: #c6cbe0;
+  font-weight: 600;
+}
+
+.columns-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .list-row {
@@ -693,6 +743,10 @@ a {
 
 .columns-7 {
   grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.columns-8 {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
 }
 
 .modal-overlay {

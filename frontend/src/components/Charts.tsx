@@ -268,6 +268,120 @@ export function BarChart({ values }: BarChartProps) {
   );
 }
 
+type Candle = {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+};
+
+type CandlestickChartProps = {
+  candles: Candle[];
+  formatValue?: (value: number) => string;
+  formatLabel?: (label: string) => string;
+};
+
+export function CandlestickChart({
+  candles,
+  formatValue,
+  formatLabel,
+}: CandlestickChartProps) {
+  if (candles.length === 0) {
+    return <div className="chart-empty">No data</div>;
+  }
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const values = candles.flatMap((candle) => [candle.low, candle.high]);
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const range = max - min || 1;
+  const paddingX = 6;
+  const paddingY = 8;
+  const plotWidth = 100 - paddingX * 2;
+  const plotHeight = 100 - paddingY * 2;
+  const candleWidth = Math.max(1, plotWidth / candles.length - 0.4);
+
+  const formatTooltipValue = (value: number) =>
+    formatValue ? formatValue(value) : value.toFixed(2);
+
+  const tooltip = useMemo(() => {
+    if (hoverIndex === null) {
+      return null;
+    }
+    const candle = candles[hoverIndex];
+    if (!candle) {
+      return null;
+    }
+    const label = formatLabel ? formatLabel(candle.date) : candle.date;
+    const x =
+      paddingX + (hoverIndex / Math.max(candles.length - 1, 1)) * plotWidth;
+    const y = paddingY + (1 - (candle.close - min) / range) * plotHeight;
+    return { candle, label, x, y };
+  }, [candles, formatLabel, hoverIndex, min, paddingX, paddingY, plotHeight, plotWidth, range]);
+
+  return (
+    <div className="line-chart">
+      <svg
+        viewBox="0 0 100 100"
+        className="chart-svg"
+        preserveAspectRatio="none"
+        onMouseLeave={() => setHoverIndex(null)}
+        onMouseMove={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          const relativeX = event.clientX - rect.left - (paddingX / 100) * rect.width;
+          const ratio = Math.min(1, Math.max(0, relativeX / rect.width));
+          const index = Math.round(ratio * (candles.length - 1));
+          setHoverIndex(index);
+        }}
+      >
+        {candles.map((candle, index) => {
+          const x =
+            paddingX + (index / Math.max(candles.length - 1, 1)) * plotWidth;
+          const openY = paddingY + (1 - (candle.open - min) / range) * plotHeight;
+          const closeY = paddingY + (1 - (candle.close - min) / range) * plotHeight;
+          const highY = paddingY + (1 - (candle.high - min) / range) * plotHeight;
+          const lowY = paddingY + (1 - (candle.low - min) / range) * plotHeight;
+          const isUp = candle.close >= candle.open;
+          const bodyTop = isUp ? closeY : openY;
+          const bodyBottom = isUp ? openY : closeY;
+          return (
+            <g key={`${candle.date}-${index}`} className="candlestick">
+              <line
+                className="candlestick-wick"
+                x1={x}
+                y1={highY}
+                x2={x}
+                y2={lowY}
+              />
+              <rect
+                className={isUp ? "candlestick-body up" : "candlestick-body down"}
+                x={x - candleWidth / 2}
+                y={bodyTop}
+                width={candleWidth}
+                height={Math.max(1, bodyBottom - bodyTop)}
+              />
+            </g>
+          );
+        })}
+      </svg>
+      {tooltip ? (
+        <div
+          className="chart-tooltip"
+          style={{ left: `${tooltip.x}%`, top: `${tooltip.y}%` }}
+        >
+          <div className="chart-tooltip-label">{tooltip.label}</div>
+          <div className="chart-tooltip-value">
+            O {formatTooltipValue(tooltip.candle.open)} · H {formatTooltipValue(tooltip.candle.high)}
+          </div>
+          <div className="chart-tooltip-value">
+            L {formatTooltipValue(tooltip.candle.low)} · C {formatTooltipValue(tooltip.candle.close)}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 type DonutChartProps = {
   values: { label: string; value: number; color: string }[];
   formatValue?: (value: number) => string;

@@ -261,12 +261,14 @@ export default function DashboardPage() {
   const barValues = useMemo(() => {
     const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const now = new Date();
+    const start = new Date(now);
+    start.setDate(now.getDate() - now.getDay());
     const days = Array.from({ length: 7 }, (_, index) => {
-      const date = new Date(now);
-      date.setDate(now.getDate() - (6 - index));
+      const date = new Date(start);
+      date.setDate(start.getDate() + index);
       return date;
     });
-    const totalsByDay = days.map((day) => {
+    return days.map((day) => {
       const label = weekdays[day.getDay()];
       const dateKey = day.toISOString().split("T")[0];
       const total = filteredTransactions.reduce((sum, transaction) => {
@@ -278,23 +280,25 @@ export default function DashboardPage() {
       }, 0);
       return { label, value: Math.round(total) };
     });
-    return totalsByDay;
   }, [filteredTransactions]);
 
   const donutValues = useMemo(() => {
-    const totalsByAccount = new Map<string, number>();
-    filteredAssets.forEach((asset) => {
-      totalsByAccount.set(
-        asset.account,
-        (totalsByAccount.get(asset.account) ?? 0) + asset.amount,
+    const totalsByType = new Map<string, number>();
+    filteredTransactions.forEach((transaction) => {
+      const value = Math.abs(
+        convertAmount(transaction.amount, transaction.currency, displayCurrency),
+      );
+      totalsByType.set(
+        transaction.type,
+        (totalsByType.get(transaction.type) ?? 0) + value,
       );
     });
-    return Array.from(totalsByAccount.entries()).map(([label, value], index) => ({
+    return Array.from(totalsByType.entries()).map(([label, value], index) => ({
       label,
       value,
       color: chartPalette[index % chartPalette.length],
     }));
-  }, [filteredAssets]);
+  }, [displayCurrency, filteredTransactions]);
 
   const latestFxRates = useMemo(() => {
     const latestByCurrency = new Map<string, FxRate>();
@@ -672,7 +676,7 @@ export default function DashboardPage() {
         </div>
         <div className="card">
           <h3>Allocation</h3>
-          <p className="muted">Account group distribution.</p>
+          <p className="muted">Income vs expense mix.</p>
           {donutValues.length ? (
             <DonutChart
               values={donutValues}

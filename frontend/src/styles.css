@@ -512,6 +512,26 @@ a {
   justify-content: flex-end;
 }
 
+.cell-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.select-pill {
+  border-radius: 999px;
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+}
+
+.select-pill.active {
+  border-color: rgba(127, 91, 255, 0.7);
+  background: rgba(127, 91, 255, 0.2);
+}
+
 .table {
   display: grid;
   gap: 8px;

@@ -6,7 +6,7 @@ import KpiCard from "../components/KpiCard";
 import Modal from "../components/Modal";
 import { useCurrency } from "../components/CurrencyContext";
 import { useSelection } from "../components/SelectionContext";
-import { del, get, post } from "../utils/apiClient";
+import { del, get, post, put } from "../utils/apiClient";
 import { convertAmount, formatCurrency } from "../utils/currency";
 import { formatDateDisplay, toDateInputValue } from "../utils/date";
 import {
@@ -15,6 +15,7 @@ import {
   storeHoldingStrategies,
   storeStrategies,
 } from "../utils/strategies";
+import { supportedCurrencies } from "../utils/currency";
 
 type Account = {
   id: string;
@@ -53,6 +54,14 @@ type Holding = {
   assetType: string;
   account: string;
   entryDate: string;
+};
+
+type HoldingEdit = {
+  ticker?: string;
+  shares?: number;
+  currency?: string;
+  accountId?: string;
+  accountName?: string;
 };
 
 type Trade = {
@@ -133,6 +142,7 @@ export default function StocksPage() {
   );
   const [selectedHoldings, setSelectedHoldings] = useState<Set<string>>(new Set());
   const [pendingStrategies, setPendingStrategies] = useState<Record<string, string>>({});
+  const [pendingHoldings, setPendingHoldings] = useState<Record<string, HoldingEdit>>({});
   const [isEditMode, setIsEditMode] = useState(false);
   const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -325,9 +335,57 @@ export default function StocksPage() {
   );
 
   const applyPendingChanges = async () => {
-    if (pendingStrategyEntries.length === 0 && selectedHoldings.size === 0) {
+    const holdingEntries = Object.entries(pendingHoldings);
+    if (
+      pendingStrategyEntries.length === 0 &&
+      holdingEntries.length === 0 &&
+      selectedHoldings.size === 0
+    ) {
       showToast("No changes", "There are no edits to apply.");
       return;
+    }
+    if (holdingEntries.length > 0) {
+      try {
+        await Promise.all(
+          holdingEntries.map(async ([id, updates]) => {
+            const payload: Record<string, unknown> = {};
+            if (updates.ticker) {
+              payload.symbol = updates.ticker;
+            }
+            if (updates.shares !== undefined) {
+              payload.quantity = updates.shares;
+            }
+            if (updates.currency) {
+              payload.currency_code = updates.currency;
+            }
+            if (updates.accountId) {
+              payload.account_id = updates.accountId;
+            }
+            if (Object.keys(payload).length > 0) {
+              await put(`/api/assets/${id}`, payload);
+            }
+          }),
+        );
+        setHoldings((prev) =>
+          prev.map((holding) => {
+            const edits = pendingHoldings[holding.id];
+            if (!edits) {
+              return holding;
+            }
+            return {
+              ...holding,
+              ticker: edits.ticker ?? holding.ticker,
+              shares: edits.shares ?? holding.shares,
+              currency: edits.currency ?? holding.currency,
+              account: edits.accountName ?? holding.account,
+            };
+          }),
+        );
+        setPendingHoldings({});
+      } catch (err) {
+        showToast("Update failed", "Unable to update holdings.");
+        return;
+      }
     }
     if (pendingStrategyEntries.length > 0) {
       setHoldingStrategies((prev) => ({ ...prev, ...pendingStrategies }));
@@ -391,7 +449,7 @@ export default function StocksPage() {
     ];
   }, [holdings.length]);
 
-  const sectorMix = useMemo(() => {
+  const stockAllocation = useMemo(() => {
     if (filteredHoldings.length === 0) {
       return [];
     }
@@ -404,11 +462,6 @@ export default function StocksPage() {
       "#6bdcff",
       "#ffa36b",
     ];
-    const formatSector = (value: string) =>
-      value
-        .replace(/_/g, " ")
-        .toLowerCase()
-        .replace(/\b\w/g, (match) => match.toUpperCase());
     const totals = filteredHoldings.reduce<Record<string, number>>((acc, holding) => {
       const effectivePrice = holding.price ?? holding.avgEntry;
       if (!effectivePrice) {
@@ -419,7 +472,7 @@ export default function StocksPage() {
         holding.currency,
         displayCurrency,
       );
-      const key = holding.assetType || "Other";
+      const key = holding.ticker;
       acc[key] = (acc[key] ?? 0) + value;
       return acc;
     }, {});
@@ -430,7 +483,7 @@ export default function StocksPage() {
     return entries
       .sort((a, b) => b[1] - a[1])
       .map(([label, value], index) => ({
-        label: formatSector(label),
+        label,
         value,
         color: colorPalette[index % colorPalette.length],
       }));
@@ -753,6 +806,26 @@ export default function StocksPage() {
             <p className="muted">No changes pending.</p>
           ) : (
             <>
+              {Object.keys(pendingHoldings).length > 0 ? (
+                <div className="confirm-section">
+                  <h4>Holding edits</h4>
+                  <ul>
+                    {Object.entries(pendingHoldings).map(([id, edits]) => {
+                      const holding = holdings.find((item) => item.id === id);
+                      const name = holding?.ticker ?? id;
+                      return (
+                        <li key={id}>
+                          {name}
+                          {edits.ticker ? ` → ${edits.ticker}` : ""}
+                          {edits.shares !== undefined ? `, shares → ${edits.shares}` : ""}
+                          {edits.currency ? `, currency → ${edits.currency}` : ""}
+                          {edits.accountName ? `, account → ${edits.accountName}` : ""}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ) : null}
               {pendingStrategyEntries.length > 0 ? (
                 <div className="confirm-section">
                   <h4>Strategy updates</h4>
@@ -877,18 +950,18 @@ export default function StocksPage() {
           )}
         </div>
         <div className="card">
-          <h3>Sector allocation</h3>
-          <p className="muted">Diversification across industries.</p>
-          {sectorMix.length === 0 ? (
+          <h3>Stock allocation</h3>
+          <p className="muted">Allocation by market value.</p>
+          {stockAllocation.length === 0 ? (
             <p className="muted">No allocations yet.</p>
           ) : (
             <>
               <DonutChart
-                values={sectorMix}
+                values={stockAllocation}
                 formatValue={(value) => formatCurrency(value, displayCurrency)}
               />
               <div className="legend">
-                {sectorMix.map((item) => (
+                {stockAllocation.map((item) => (
                   <div key={item.label} className="legend-item">
                     <span className="legend-dot" style={{ background: item.color }} />
                     {item.label}
@@ -908,6 +981,7 @@ export default function StocksPage() {
               setIsEditMode((prev) => !prev);
               setSelectedHoldings(new Set());
               setPendingStrategies({});
+              setPendingHoldings({});
             }}
           >
             {isEditMode ? "Exit edit mode" : "Edit holdings"}
@@ -934,45 +1008,75 @@ export default function StocksPage() {
             </>
           ) : null}
         </div>
-        <div className={`list-row list-header ${isEditMode ? "columns-8" : "columns-7"}`}>
-          {isEditMode ? <span /> : null}
+        <div className="list-row list-header columns-7">
           <span>Ticker</span>
           <span>Shares</span>
           <span>Avg Entry</span>
           <span>Last Price</span>
           <span>Market Value ({displayCurrency})</span>
           <span>Day Change</span>
-          {isEditMode ? <span>Strategy</span> : null}
           <span>Account</span>
         </div>
         {filteredHoldings.length === 0 ? (
-          <div className={`list-row ${isEditMode ? "columns-8" : "columns-7"} empty-state`}>
-            No holdings available.
-          </div>
+          <div className="list-row columns-7 empty-state">No holdings available.</div>
         ) : (
           filteredHoldings.map((row) => {
             const currentStrategy = holdingStrategies[row.id] ?? "Unassigned";
             const pendingStrategy = pendingStrategies[row.id];
+            const pendingHolding = pendingHoldings[row.id];
             const isSelected = selectedHoldings.has(row.id);
-            const isEdited = pendingStrategy && pendingStrategy !== currentStrategy;
+            const isEdited =
+              (pendingStrategy && pendingStrategy !== currentStrategy) ||
+              Boolean(pendingHolding);
             return (
               <div
-                className={`list-row ${isEditMode ? "columns-8" : "columns-7"} ${
-                  isSelected ? "row-selected" : ""
-                } ${isEdited ? "row-edited" : ""}`}
+                className={`list-row columns-7 ${isSelected ? "row-selected" : ""} ${
+                  isEdited ? "row-edited" : ""
+                }`}
                 key={row.id}
               >
-                {isEditMode ? (
-                  <span>
+                <span className="cell-inline">
+                  {isEditMode ? (
+                    <button
+                      type="button"
+                      className={`select-pill ${isSelected ? "active" : ""}`}
+                      onClick={() => toggleHoldingSelection(row.id)}
+                    >
+                      {isSelected ? "Selected" : "Select"}
+                    </button>
+                  ) : null}
+                  {isEditMode ? (
                     <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => toggleHoldingSelection(row.id)}
+                      type="text"
+                      value={pendingHolding?.ticker ?? row.ticker}
+                      onChange={(event) => {
+                        const value = event.target.value.toUpperCase();
+                        setPendingHoldings((prev) => ({
+                          ...prev,
+                          [row.id]: { ...prev[row.id], ticker: value },
+                        }));
+                      }}
                     />
-                  </span>
-                ) : null}
-                <span>{row.ticker}</span>
-                <span>{row.shares}</span>
+                  ) : (
+                    row.ticker
+                  )}
+                </span>
+                <span>
+                  {isEditMode ? (
+                    <input
+                      type="number"
+                      value={pendingHolding?.shares ?? row.shares}
+                      onChange={(event) =>
+                        setPendingHoldings((prev) => ({
+                          ...prev,
+                          [row.id]: { ...prev[row.id], shares: Number(event.target.value) },
+                        }))
+                      }
+                    />
+                  ) : (
+                    row.shares
+                  )}
+                </span>
                 <span>
                   {row.avgEntry === null
                     ? "—"
@@ -995,45 +1099,85 @@ export default function StocksPage() {
                   {row.change > 0 ? "+" : ""}
                   {row.change.toFixed(1)}%
                 </span>
-                {isEditMode ? (
-                  <span>
-                    <select
-                      value={pendingStrategy ?? currentStrategy}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        setPendingStrategies((prev) => {
-                          const next = { ...prev };
-                          if (value === currentStrategy) {
-                            delete next[row.id];
-                          } else {
-                            next[row.id] = value;
-                          }
-                          return next;
-                        });
-                      }}
-                    >
-                      {["Unassigned", ...strategies].map((strategy) => (
-                        <option key={strategy} value={strategy}>
-                          {strategy}
-                        </option>
-                      ))}
-                    </select>
-                  </span>
-                ) : null}
-                <span>{row.account}</span>
+                <span className="cell-inline">
+                  {isEditMode ? (
+                    <>
+                      <select
+                        value={pendingHolding?.accountId ?? accountIdByName.get(row.account) ?? ""}
+                        onChange={(event) => {
+                          const accountId = event.target.value;
+                          const accountName =
+                            accountOptions.find(
+                              (account) => accountIdByName.get(account) === accountId,
+                            ) ?? row.account;
+                          setPendingHoldings((prev) => ({
+                            ...prev,
+                            [row.id]: {
+                              ...prev[row.id],
+                              accountId,
+                              accountName,
+                            },
+                          }));
+                        }}
+                      >
+                        {accountOptions.map((account) => (
+                          <option key={account} value={accountIdByName.get(account)}>
+                            {account}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={pendingHolding?.currency ?? row.currency}
+                        onChange={(event) =>
+                          setPendingHoldings((prev) => ({
+                            ...prev,
+                            [row.id]: { ...prev[row.id], currency: event.target.value },
+                          }))
+                        }
+                      >
+                        {supportedCurrencies.map((currencyOption) => (
+                          <option key={currencyOption} value={currencyOption}>
+                            {currencyOption}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={pendingStrategy ?? currentStrategy}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setPendingStrategies((prev) => {
+                            const next = { ...prev };
+                            if (value === currentStrategy) {
+                              delete next[row.id];
+                            } else {
+                              next[row.id] = value;
+                            }
+                            return next;
+                          });
+                        }}
+                      >
+                        {["Unassigned", ...strategies].map((strategy) => (
+                          <option key={strategy} value={strategy}>
+                            {strategy}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  ) : (
+                    row.account
+                  )}
+                </span>
               </div>
             );
           })
         )}
-        <div className={`list-row ${isEditMode ? "columns-8" : "columns-7"} summary-row`}>
+        <div className="list-row columns-7 summary-row">
           <span>Total</span>
           <span>-</span>
           <span>-</span>
           <span>-</span>
           <span>-</span>
           <span>{formatCurrency(totalEquity, displayCurrency)}</span>
-          <span>-</span>
-          {isEditMode ? <span>-</span> : null}
           <span>-</span>
         </div>
       </div>

@@ -4,7 +4,7 @@ import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import Modal from "../components/Modal";
 import { useCurrency } from "../components/CurrencyContext";
 import { useSelection } from "../components/SelectionContext";
-import { get, post } from "../utils/apiClient";
+import { del, get, post, put } from "../utils/apiClient";
 import { readCategories } from "../utils/categories";
 import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
 import {
@@ -42,6 +42,8 @@ type RecurringTransaction = {
 };
 
 type TransactionRow = {
+  id: string;
+  accountId: string;
   date: string;
   account: string;
   type: string;
@@ -67,6 +69,10 @@ export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [selectedTransactions, setSelectedTransactions] = useState<Set<string>>(new Set());
+  const [pendingEdits, setPendingEdits] = useState<Record<string, Partial<TransactionRow>>>({});
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -90,6 +96,8 @@ export default function TransactionsPage() {
         setTransactionAccount(accountsResponse[0]?.id ?? "");
         setTransactions(
           transactionsResponse.map((transaction) => ({
+            id: transaction.id,
+            accountId: transaction.account_id,
             date: transaction.occurred_at.split("T")[0],
             account: accountMap.get(transaction.account_id) ?? "Unknown",
             type: transaction.transaction_type === "income" ? "Income" : "Expense",
@@ -158,6 +166,102 @@ export default function TransactionsPage() {
     setToast({ title, description });
   };
 
+  const updatePending = (row: TransactionRow, updates: Partial<TransactionRow>) => {
+    setPendingEdits((prev) => {
+      const next = { ...prev };
+      const merged = { ...row, ...prev[row.id], ...updates };
+      const isUnchanged =
+        merged.date === row.date &&
+        merged.accountId === row.accountId &&
+        merged.type === row.type &&
+        merged.category === row.category &&
+        merged.amount === row.amount &&
+        merged.currency === row.currency;
+      if (isUnchanged) {
+        delete next[row.id];
+      } else {
+        next[row.id] = merged;
+      }
+      return next;
+    });
+  };
+
+  const toggleTransactionSelection = (id: string) => {
+    setSelectedTransactions((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const pendingEditsList = Object.entries(pendingEdits);
+
+  const applyPendingChanges = async () => {
+    if (pendingEditsList.length === 0 && selectedTransactions.size === 0) {
+      showToast("No changes", "There are no edits to apply.");
+      return;
+    }
+    try {
+      if (pendingEditsList.length > 0) {
+        await Promise.all(
+          pendingEditsList.map(async ([id, updates]) => {
+            const payload: Record<string, unknown> = {};
+            if (updates.accountId) {
+              payload.account_id = updates.accountId;
+            }
+            if (updates.amount !== undefined) {
+              payload.amount = updates.amount;
+            }
+            if (updates.currency) {
+              payload.currency_code = updates.currency;
+            }
+            if (updates.type) {
+              payload.transaction_type = updates.type.toLowerCase();
+            }
+            if (updates.date) {
+              payload.occurred_at = toIsoDateTime(updates.date);
+            }
+            if (Object.keys(payload).length > 0) {
+              await put(`/api/transactions/${id}`, payload);
+            }
+          }),
+        );
+        setTransactions((prev) =>
+          prev.map((row) => {
+            const updates = pendingEdits[row.id];
+            if (!updates) {
+              return row;
+            }
+            return {
+              ...row,
+              ...updates,
+              account: updates.account ?? row.account,
+            };
+          }),
+        );
+        setPendingEdits({});
+      }
+      if (selectedTransactions.size > 0) {
+        await Promise.all(
+          Array.from(selectedTransactions).map((id) => del(`/api/transactions/${id}`)),
+        );
+        setTransactions((prev) =>
+          prev.filter((row) => !selectedTransactions.has(row.id)),
+        );
+        setSelectedTransactions(new Set());
+      }
+      showToast("Changes applied", "Your updates have been saved.");
+    } catch (err) {
+      showToast("Update failed", "Unable to apply the requested changes.");
+    } finally {
+      setIsReviewOpen(false);
+    }
+  };
+
   const handleSaveTransaction = async () => {
     const amount = Number(transactionAmount);
     if (!amount) {
@@ -180,6 +284,8 @@ export default function TransactionsPage() {
       });
       setTransactions((prev) => [
         {
+          id: created.id,
+          accountId: created.account_id,
           date: created.occurred_at.split("T")[0],
           account: accountName,
           type: created.transaction_type === "income" ? "Income" : "Expense",
@@ -329,6 +435,64 @@ export default function TransactionsPage() {
           </label>
         </div>
       </Modal>
+      <Modal
+        title="Confirm transaction changes"
+        description="Review the edits before applying."
+        isOpen={isReviewOpen}
+        onClose={() => setIsReviewOpen(false)}
+        footer={
+          <>
+            <button className="pill" type="button" onClick={() => setIsReviewOpen(false)}>
+              Cancel
+            </button>
+            <button className="pill primary" type="button" onClick={applyPendingChanges}>
+              Apply changes
+            </button>
+          </>
+        }
+      >
+        <div className="confirm-list">
+          {pendingEditsList.length === 0 && selectedTransactions.size === 0 ? (
+            <p className="muted">No changes pending.</p>
+          ) : (
+            <>
+              {pendingEditsList.length > 0 ? (
+                <div className="confirm-section">
+                  <h4>Edits</h4>
+                  <ul>
+                    {pendingEditsList.map(([id, updates]) => {
+                      const row = transactions.find((item) => item.id === id);
+                      return (
+                        <li key={id}>
+                          {row?.account ?? "Transaction"} on {formatDateDisplay(row?.date ?? "")}
+                          {updates.amount !== undefined ? ` → ${updates.amount}` : ""}
+                          {updates.category ? `, ${updates.category}` : ""}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ) : null}
+              {selectedTransactions.size > 0 ? (
+                <div className="confirm-section">
+                  <h4>Deletions</h4>
+                  <ul>
+                    {Array.from(selectedTransactions).map((id) => {
+                      const row = transactions.find((item) => item.id === id);
+                      return (
+                        <li key={id}>
+                          {row?.account ?? "Transaction"} ·{" "}
+                          {formatDateDisplay(row?.date ?? "")}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
+      </Modal>
       {toast && <ActionToast toast={toast} onDismiss={() => setToast(null)} />}
       <div className="card">
         <div className="card-header">
@@ -363,7 +527,39 @@ export default function TransactionsPage() {
         )}
       </div>
       <div className="card list-card">
-        <div className="list-row list-header columns-6">
+        <div className="list-actions">
+          <button
+            className="pill"
+            type="button"
+            onClick={() => {
+              setIsEditMode((prev) => !prev);
+              setSelectedTransactions(new Set());
+              setPendingEdits({});
+            }}
+          >
+            {isEditMode ? "Exit edit mode" : "Edit transactions"}
+          </button>
+          {isEditMode ? (
+            <>
+              <button
+                className="pill"
+                type="button"
+                onClick={() =>
+                  setSelectedTransactions(
+                    new Set(filteredTransactions.map((row) => row.id)),
+                  )
+                }
+              >
+                Select all
+              </button>
+              <button className="pill" type="button" onClick={() => setIsReviewOpen(true)}>
+                Review changes
+              </button>
+            </>
+          ) : null}
+        </div>
+        <div className={`list-row list-header ${isEditMode ? "columns-7" : "columns-6"}`}>
+          {isEditMode ? <span /> : null}
           <span>Date</span>
           <span>Account</span>
           <span>Type</span>
@@ -372,36 +568,138 @@ export default function TransactionsPage() {
           <span>Status</span>
         </div>
         {filteredTransactions.length === 0 ? (
-          <div className="list-row columns-6 empty-state">No transactions available.</div>
+          <div className={`list-row ${isEditMode ? "columns-7" : "columns-6"} empty-state`}>
+            No transactions available.
+          </div>
         ) : (
           <>
-            {filteredTransactions.map((row) => (
-              <div className="list-row columns-6" key={`${row.date}-${row.amount}-${row.account}`}>
-                <span>{formatDateDisplay(row.date)}</span>
-                <span>{row.account}</span>
-                <span>{row.type}</span>
-                <span>{row.category}</span>
-                <span className="amount-cell">
+            {filteredTransactions.map((row) => {
+              const pending = pendingEdits[row.id];
+              const isSelected = selectedTransactions.has(row.id);
+              const isEdited = Boolean(pending);
+              return (
+                <div
+                  className={`list-row ${isEditMode ? "columns-7" : "columns-6"} ${
+                    isSelected ? "row-selected" : ""
+                  } ${isEdited ? "row-edited" : ""}`}
+                  key={row.id}
+                >
+                  {isEditMode ? (
+                    <span>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleTransactionSelection(row.id)}
+                      />
+                    </span>
+                  ) : null}
                   <span>
-                    {formatCurrency(
-                      convertAmount(row.amount, row.currency, displayCurrency),
-                      displayCurrency,
+                  {isEditMode ? (
+                    <input
+                      type="date"
+                      value={pending?.date ?? row.date}
+                      onChange={(event) =>
+                        updatePending(row, { date: event.target.value })
+                      }
+                    />
+                  ) : (
+                    formatDateDisplay(row.date)
+                  )}
+                </span>
+                <span>
+                  {isEditMode ? (
+                    <select
+                      value={pending?.accountId ?? row.accountId}
+                      onChange={(event) =>
+                        updatePending(row, {
+                          accountId: event.target.value,
+                          account:
+                            accountOptions.find((account) => account.id === event.target.value)
+                              ?.name ?? row.account,
+                        })
+                      }
+                    >
+                        {accountOptions.map((account) => (
+                          <option key={account.id} value={account.id}>
+                            {account.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      row.account
                     )}
                   </span>
-                  <span className="subtext">
-                    {formatCurrency(row.amount, row.currency)} {row.currency}
+                  <span>
+                    {isEditMode ? (
+                      <select
+                        value={pending?.type ?? row.type}
+                        onChange={(event) =>
+                          updatePending(row, { type: event.target.value })
+                        }
+                      >
+                        {["Income", "Expense"].map((type) => (
+                          <option key={type} value={type}>
+                            {type}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      row.type
+                    )}
                   </span>
-                </span>
-                <span className="status">{row.status}</span>
-              </div>
-            ))}
-            <div className="list-row columns-6 summary-row">
+                  <span>
+                    {isEditMode ? (
+                      <select
+                        value={pending?.category ?? row.category}
+                        onChange={(event) =>
+                          updatePending(row, { category: event.target.value })
+                        }
+                      >
+                        {categories.map((category) => (
+                          <option key={category} value={category}>
+                            {category}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      row.category
+                    )}
+                  </span>
+                  <span className="amount-cell">
+                    {isEditMode ? (
+                      <input
+                        type="number"
+                        value={pending?.amount ?? row.amount}
+                        onChange={(event) =>
+                          updatePending(row, { amount: Number(event.target.value) })
+                        }
+                      />
+                    ) : (
+                      <>
+                        <span>
+                          {formatCurrency(
+                            convertAmount(row.amount, row.currency, displayCurrency),
+                            displayCurrency,
+                          )}
+                        </span>
+                        <span className="subtext">
+                          {formatCurrency(row.amount, row.currency)} {row.currency}
+                        </span>
+                      </>
+                    )}
+                  </span>
+                  <span className="status">{row.status}</span>
+                </div>
+              );
+            })}
+            <div className={`list-row ${isEditMode ? "columns-7" : "columns-6"} summary-row`}>
               <span>Total</span>
               <span>-</span>
               <span>-</span>
               <span>-</span>
               <span>{formatCurrency(transactionTotal, displayCurrency)}</span>
               <span>-</span>
+              {isEditMode ? <span>-</span> : null}
             </div>
           </>
         )}

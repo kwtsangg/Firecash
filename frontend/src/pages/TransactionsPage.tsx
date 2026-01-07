@@ -3,21 +3,23 @@ import ActionToast, { ActionToastData } from "../components/ActionToast";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import Modal from "../components/Modal";
 import { useCurrency } from "../components/CurrencyContext";
+import { useSelection } from "../components/SelectionContext";
 import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
 
 export default function TransactionsPage() {
   const accountOptions = ["Primary Account", "Retirement", "Side Hustle"];
   const { currency: displayCurrency } = useCurrency();
+  const { account: selectedAccount, group: selectedGroup } = useSelection();
   const [toast, setToast] = useState<ActionToastData | null>(null);
   const [range, setRange] = useState<DateRange>({
-    from: "2024-03-01",
-    to: "2024-04-30",
+    from: "2026-03-01",
+    to: "2026-04-30",
   });
   const [isTransactionOpen, setIsTransactionOpen] = useState(false);
   const [transactionAccount, setTransactionAccount] = useState(accountOptions[0]);
   const [transactionType, setTransactionType] = useState("Income");
   const [transactionAmount, setTransactionAmount] = useState("");
-  const [transactionDate, setTransactionDate] = useState("2024-04-20");
+  const [transactionDate, setTransactionDate] = useState("2026-04-20");
   const [transactionCurrency, setTransactionCurrency] = useState("USD");
   const [transactions, setTransactions] = useState<
     {
@@ -30,7 +32,7 @@ export default function TransactionsPage() {
     }[]
   >([
     {
-      date: "2024-04-18",
+      date: "2026-04-18",
       account: "Primary Account",
       type: "Income",
       amount: 2400,
@@ -38,7 +40,7 @@ export default function TransactionsPage() {
       status: "Cleared",
     },
     {
-      date: "2024-04-16",
+      date: "2026-04-16",
       account: "Retirement",
       type: "Expense",
       amount: 320,
@@ -46,6 +48,18 @@ export default function TransactionsPage() {
       status: "Scheduled",
     },
   ]);
+
+  const accountGroups: Record<string, string> = {
+    "Primary Account": "Cashflow",
+    Retirement: "Investments",
+    "Side Hustle": "Cashflow",
+  };
+  const matchesSelection = (account: string) =>
+    (selectedAccount === "All Accounts" || selectedAccount === account) &&
+    (selectedGroup === "All Groups" || accountGroups[account] === selectedGroup);
+  const filteredTransactions = transactions.filter((row) =>
+    matchesSelection(row.account),
+  );
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
@@ -197,13 +211,13 @@ export default function TransactionsPage() {
           {
             name: "Salary",
             cadence: "Monthly",
-            next: "2024-05-01",
+            next: "2026-05-01",
             status: "Active",
           },
           {
             name: "Rent",
             cadence: "Monthly",
-            next: "2024-04-30",
+            next: "2026-04-30",
             status: "Active",
           },
         ].map((row) => (
@@ -223,16 +237,21 @@ export default function TransactionsPage() {
           <span>Amount ({displayCurrency})</span>
           <span>Status</span>
         </div>
-        {transactions.map((row) => (
+        {filteredTransactions.map((row) => (
           <div className="list-row columns-5" key={`${row.date}-${row.amount}-${row.account}`}>
             <span>{row.date}</span>
             <span>{row.account}</span>
             <span>{row.type}</span>
-            <span>
-              {formatCurrency(
-                convertAmount(row.amount, row.currency, displayCurrency),
-                displayCurrency,
-              )}
+            <span className="amount-cell">
+              <span>
+                {formatCurrency(
+                  convertAmount(row.amount, row.currency, displayCurrency),
+                  displayCurrency,
+                )}
+              </span>
+              <span className="subtext">
+                {formatCurrency(row.amount, row.currency)} {row.currency}
+              </span>
             </span>
             <span className="status">{row.status}</span>
           </div>

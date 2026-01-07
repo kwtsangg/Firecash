@@ -5,6 +5,7 @@ import Modal from "../components/Modal";
 import { useCurrency } from "../components/CurrencyContext";
 import { useSelection } from "../components/SelectionContext";
 import { get, post } from "../utils/apiClient";
+import { readCategories, storeCategories } from "../utils/categories";
 import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
 import {
   formatDateDisplay,
@@ -44,6 +45,7 @@ type TransactionRow = {
   date: string;
   account: string;
   type: string;
+  category: string;
   amount: number;
   currency: string;
   status: string;
@@ -60,6 +62,9 @@ export default function TransactionsPage() {
   const [transactionAmount, setTransactionAmount] = useState("");
   const [transactionDate, setTransactionDate] = useState(() => toDateInputValue(new Date()));
   const [transactionCurrency, setTransactionCurrency] = useState("USD");
+  const [transactionCategory, setTransactionCategory] = useState("General");
+  const [categories, setCategories] = useState<string[]>(() => readCategories());
+  const [categoryName, setCategoryName] = useState("");
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -89,6 +94,7 @@ export default function TransactionsPage() {
             date: transaction.occurred_at.split("T")[0],
             account: accountMap.get(transaction.account_id) ?? "Unknown",
             type: transaction.transaction_type === "income" ? "Income" : "Expense",
+            category: "Uncategorized",
             amount: transaction.amount,
             currency: transaction.currency_code,
             status: "Cleared",
@@ -121,6 +127,16 @@ export default function TransactionsPage() {
       return acc;
     }, {});
   }, [accountOptions]);
+
+  useEffect(() => {
+    storeCategories(categories);
+  }, [categories]);
+
+  useEffect(() => {
+    if (!categories.includes(transactionCategory)) {
+      setTransactionCategory(categories[0] ?? "General");
+    }
+  }, [categories, transactionCategory]);
 
   const matchesSelection = (account: string) =>
     (selectedAccount === "All Accounts" || selectedAccount === account) &&
@@ -166,6 +182,7 @@ export default function TransactionsPage() {
           date: created.occurred_at.split("T")[0],
           account: accountName,
           type: created.transaction_type === "income" ? "Income" : "Expense",
+          category: transactionCategory,
           amount: created.amount,
           currency: created.currency_code,
           status: "Cleared",
@@ -178,6 +195,26 @@ export default function TransactionsPage() {
     } catch (err) {
       showToast("Save failed", "Unable to save this transaction.");
     }
+  };
+
+  const handleAddCategory = () => {
+    const trimmed = categoryName.trim();
+    if (!trimmed) {
+      showToast("Missing category", "Enter a category name to save.");
+      return;
+    }
+    if (categories.some((category) => category.toLowerCase() === trimmed.toLowerCase())) {
+      showToast("Category exists", "Choose a new category name.");
+      return;
+    }
+    setCategories((prev) => [...prev, trimmed]);
+    setCategoryName("");
+    showToast("Category added", `${trimmed} is ready to use.`);
+  };
+
+  const handleRemoveCategory = (category: string) => {
+    const updated = categories.filter((item) => item !== category);
+    setCategories(updated.length ? updated : ["General"]);
   };
 
   if (isLoading) {
@@ -295,6 +332,19 @@ export default function TransactionsPage() {
             </select>
           </label>
           <label>
+            Category
+            <select
+              value={transactionCategory}
+              onChange={(event) => setTransactionCategory(event.target.value)}
+            >
+              {categories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
             Occurred on
             <input
               type="date"
@@ -337,23 +387,59 @@ export default function TransactionsPage() {
           ))
         )}
       </div>
+      <div className="card">
+        <div className="card-header">
+          <div>
+            <h3>Categories</h3>
+            <p className="muted">Create and manage transaction categories.</p>
+          </div>
+        </div>
+        <div className="category-manager">
+          <input
+            type="text"
+            placeholder="New category"
+            value={categoryName}
+            onChange={(event) => setCategoryName(event.target.value)}
+          />
+          <button className="pill" type="button" onClick={handleAddCategory}>
+            Add Category
+          </button>
+        </div>
+        <div className="chip-grid">
+          {categories.map((category) => (
+            <div className="chip" key={category}>
+              <span>{category}</span>
+              <button
+                type="button"
+                className="chip-action"
+                onClick={() => handleRemoveCategory(category)}
+                aria-label={`Remove ${category}`}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
       <div className="card list-card">
-        <div className="list-row list-header columns-5">
+        <div className="list-row list-header columns-6">
           <span>Date</span>
           <span>Account</span>
           <span>Type</span>
+          <span>Category</span>
           <span>Amount ({displayCurrency})</span>
           <span>Status</span>
         </div>
         {filteredTransactions.length === 0 ? (
-          <div className="list-row columns-5 empty-state">No transactions available.</div>
+          <div className="list-row columns-6 empty-state">No transactions available.</div>
         ) : (
           <>
             {filteredTransactions.map((row) => (
-              <div className="list-row columns-5" key={`${row.date}-${row.amount}-${row.account}`}>
+              <div className="list-row columns-6" key={`${row.date}-${row.amount}-${row.account}`}>
                 <span>{formatDateDisplay(row.date)}</span>
                 <span>{row.account}</span>
                 <span>{row.type}</span>
+                <span>{row.category}</span>
                 <span className="amount-cell">
                   <span>
                     {formatCurrency(
@@ -368,8 +454,9 @@ export default function TransactionsPage() {
                 <span className="status">{row.status}</span>
               </div>
             ))}
-            <div className="list-row columns-5 summary-row">
+            <div className="list-row columns-6 summary-row">
               <span>Total</span>
+              <span>-</span>
               <span>-</span>
               <span>-</span>
               <span>{formatCurrency(transactionTotal, displayCurrency)}</span>

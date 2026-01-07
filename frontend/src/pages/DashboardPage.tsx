@@ -8,7 +8,13 @@ import { useCurrency } from "../components/CurrencyContext";
 import { useSelection } from "../components/SelectionContext";
 import { get, post } from "../utils/apiClient";
 import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
-import { getDefaultRange, startOfMonth, toDateInputValue, toIsoDateTime } from "../utils/date";
+import {
+  formatDateDisplay,
+  getDefaultRange,
+  startOfMonth,
+  toDateInputValue,
+  toIsoDateTime,
+} from "../utils/date";
 
 type Account = {
   id: string;
@@ -33,12 +39,6 @@ type Transaction = {
   transaction_type: string;
   description: string | null;
   occurred_at: string;
-};
-
-type TotalsResponse = {
-  total: number;
-  currency_code: string;
-  totals_by_currency: { currency_code: string; total: number }[];
 };
 
 type HistoryPoint = {
@@ -85,7 +85,6 @@ export default function DashboardPage() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [transactions, setTransactions] = useState<TransactionDisplay[]>([]);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
-  const [totals, setTotals] = useState<TotalsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -97,12 +96,11 @@ export default function DashboardPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const [accountsResponse, assetsResponse, transactionsResponse, totalsResponse, historyResponse] =
+        const [accountsResponse, assetsResponse, transactionsResponse, historyResponse] =
           await Promise.all([
             get<Account[]>("/api/accounts"),
             get<Asset[]>("/api/assets"),
             get<Transaction[]>("/api/transactions"),
-            get<TotalsResponse>("/api/totals"),
             get<HistoryPoint[]>("/api/history"),
           ]);
         if (!isMounted) {
@@ -121,7 +119,6 @@ export default function DashboardPage() {
         setAccounts(accountsResponse);
         setAssets(assetsResponse);
         setTransactions(mappedTransactions);
-        setTotals(totalsResponse);
         setHistory(historyResponse);
         setTransactionAccount(accountsResponse[0]?.id ?? "");
       } catch (err) {
@@ -270,12 +267,10 @@ export default function DashboardPage() {
     }
   };
 
-  const totalAssets = totals
-    ? convertAmount(totals.total, totals.currency_code, displayCurrency)
-    : filteredAssets.reduce(
-        (sum, asset) => sum + convertAmount(asset.amount, asset.currency, displayCurrency),
-        0,
-      );
+  const totalAssets = filteredAssets.reduce(
+    (sum, asset) => sum + convertAmount(asset.amount, asset.currency, displayCurrency),
+    0,
+  );
 
   const netIncome = filteredTransactions.reduce((sum, transaction) => {
     const signedAmount = transaction.type === "Expense" ? -transaction.amount : transaction.amount;
@@ -299,10 +294,6 @@ export default function DashboardPage() {
       (new Date(range.to).getTime() - new Date(range.from).getTime()) / 86400000,
     ),
   );
-  const axisDateFormat =
-    rangeDays <= 45
-      ? new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit" })
-      : new Intl.DateTimeFormat("en-GB", { month: "2-digit", year: "numeric" });
   const labelCount = Math.min(lineSeries.length || 1, rangeDays <= 45 ? 6 : 5);
   const labelStep = labelCount > 1 ? (lineSeries.length - 1) / (labelCount - 1) : 0;
   const axisXLabels = Array.from({ length: labelCount }, (_, index) =>
@@ -310,7 +301,8 @@ export default function DashboardPage() {
   )
     .filter((index, position, list) => list.indexOf(index) === position)
     .filter((index) => lineSeries[index])
-    .map((index) => axisDateFormat.format(new Date(lineSeries[index].date)));
+    .map((index) => formatDateDisplay(lineSeries[index].date));
+  const tooltipDates = lineSeries.map((point) => formatDateDisplay(point.date));
 
   const hasHistory = lineSeries.length > 1 && lineSeries.some((point) => point.value !== 0);
   const growthValue = hasHistory
@@ -543,7 +535,11 @@ export default function DashboardPage() {
           <DateRangePicker value={range} onChange={setRange} />
         </div>
         <div className="chart-surface chart-axis-surface">
-          <LineChart points={linePoints} />
+          <LineChart
+            points={linePoints}
+            labels={tooltipDates}
+            formatValue={(value) => formatCurrency(value, displayCurrency)}
+          />
           <div className="chart-axis-y">
             {axisYLabels.map((label, index) => (
               <span key={`${label}-${index}`}>{label}</span>
@@ -621,7 +617,7 @@ export default function DashboardPage() {
               className="list-row columns-5"
               key={`${transaction.date}-${transaction.amount}-${transaction.notes}`}
             >
-              <span>{transaction.date}</span>
+              <span>{formatDateDisplay(transaction.date)}</span>
               <span>{transaction.account}</span>
               <span>{transaction.type}</span>
               <span className="amount-cell">

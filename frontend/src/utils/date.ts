@@ -29,6 +29,16 @@ export function parseDateInput(dateString: string) {
   return new Date(`${dateString}T00:00:00`);
 }
 
+export function formatDateDisplay(date: string | Date) {
+  const normalized =
+    typeof date === "string" ? date.split("T")[0] : toDateInputValue(date);
+  const [year, month, day] = normalized.split("-");
+  if (!year || !month || !day) {
+    return normalized;
+  }
+  return `${year}/${month.padStart(2, "0")}/${day.padStart(2, "0")}`;
+}
+
 export function toIsoDateTime(dateString: string) {
   return new Date(`${dateString}T00:00:00Z`).toISOString();
 }

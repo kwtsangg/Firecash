@@ -6,7 +6,13 @@ import { useCurrency } from "../components/CurrencyContext";
 import { useSelection } from "../components/SelectionContext";
 import { get, post } from "../utils/apiClient";
 import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
-import { getDefaultRange, parseDateInput, toDateInputValue, toIsoDateTime } from "../utils/date";
+import {
+  formatDateDisplay,
+  getDefaultRange,
+  parseDateInput,
+  toDateInputValue,
+  toIsoDateTime,
+} from "../utils/date";
 
 type Account = {
   id: string;
@@ -340,7 +346,7 @@ export default function TransactionsPage() {
         ) : (
           filteredTransactions.map((row) => (
             <div className="list-row columns-5" key={`${row.date}-${row.amount}-${row.account}`}>
-              <span>{row.date}</span>
+              <span>{formatDateDisplay(row.date)}</span>
               <span>{row.account}</span>
               <span>{row.type}</span>
               <span className="amount-cell">

@@ -1,56 +1,133 @@
+import { useMemo, useState, type MouseEvent } from "react";
+
 type LineChartProps = {
   points: number[];
+  labels?: string[];
+  formatValue?: (value: number) => string;
   xLabels?: { label: string; position: number }[];
   yLabels?: { label: string; position: number }[];
 };
 
-export function LineChart({ points, xLabels = [], yLabels = [] }: LineChartProps) {
+export function LineChart({
+  points,
+  labels = [],
+  formatValue,
+  xLabels = [],
+  yLabels = [],
+}: LineChartProps) {
   if (points.length === 0) {
     return <div className="chart-empty">No data</div>;
   }
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const max = Math.max(...points);
   const min = Math.min(...points);
   const range = max - min || 1;
-  const path = points
-    .map((value, index) => {
-      const x = (index / (points.length - 1)) * 100;
-      const y = 100 - ((value - min) / range) * 100;
-      return `${index === 0 ? "M" : "L"} ${x} ${y}`;
-    })
+  const count = Math.max(points.length - 1, 1);
+  const positions = useMemo(
+    () =>
+      points.map((value, index) => {
+        const x = (index / count) * 100;
+        const y = 100 - ((value - min) / range) * 100;
+        return { x, y, value };
+      }),
+    [points, count, min, range],
+  );
+  const path = positions
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
     .join(" ");
+  const activePoint = activeIndex === null ? null : positions[activeIndex];
+  const tooltipValue =
+    activePoint && formatValue ? formatValue(activePoint.value) : activePoint?.value.toString();
+  const tooltipLabel = activeIndex !== null ? labels[activeIndex] : null;
+
+  const handleMove = (event: MouseEvent<SVGSVGElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const relativeX = event.clientX - rect.left;
+    const ratio = rect.width ? relativeX / rect.width : 0;
+    const nextIndex = Math.min(
+      positions.length - 1,
+      Math.max(0, Math.round(ratio * (positions.length - 1))),
+    );
+    setActiveIndex(nextIndex);
+  };
+
+  const handleLeave = () => {
+    setActiveIndex(null);
+  };
 
   return (
-    <svg viewBox="0 0 100 100" className="chart-svg" preserveAspectRatio="none">
-      <path d={path} fill="none" stroke="url(#lineGradient)" strokeWidth="3" />
-      {yLabels.map((item, index) => (
-        <text
-          key={`y-${item.label}-${index}`}
-          x="2"
-          y={item.position}
-          className="chart-axis-text"
-          textAnchor="start"
+    <div className="line-chart">
+      <svg
+        viewBox="0 0 100 100"
+        className="chart-svg"
+        preserveAspectRatio="none"
+        onMouseMove={handleMove}
+        onMouseLeave={handleLeave}
+      >
+        <path d={path} fill="none" stroke="url(#lineGradient)" strokeWidth="3" />
+        {activePoint ? (
+          <g className="chart-crosshair-group">
+            <line
+              className="chart-crosshair"
+              x1={activePoint.x}
+              y1="0"
+              x2={activePoint.x}
+              y2="100"
+            />
+            <line
+              className="chart-crosshair"
+              x1="0"
+              y1={activePoint.y}
+              x2="100"
+              y2={activePoint.y}
+            />
+            <circle
+              className="chart-point"
+              cx={activePoint.x}
+              cy={activePoint.y}
+              r="2.5"
+            />
+          </g>
+        ) : null}
+        {yLabels.map((item, index) => (
+          <text
+            key={`y-${item.label}-${index}`}
+            x="2"
+            y={item.position}
+            className="chart-axis-text"
+            textAnchor="start"
+          >
+            {item.label}
+          </text>
+        ))}
+        {xLabels.map((item, index) => (
+          <text
+            key={`x-${item.label}-${index}`}
+            x={item.position}
+            y="98"
+            className="chart-axis-text"
+            textAnchor="middle"
+          >
+            {item.label}
+          </text>
+        ))}
+        <defs>
+          <linearGradient id="lineGradient" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0%" stopColor="#7f5bff" />
+            <stop offset="100%" stopColor="#5b6cff" />
+          </linearGradient>
+        </defs>
+      </svg>
+      {activePoint && tooltipValue ? (
+        <div
+          className="chart-tooltip"
+          style={{ left: `${activePoint.x}%`, top: `${activePoint.y}%` }}
         >
-          {item.label}
-        </text>
-      ))}
-      {xLabels.map((item, index) => (
-        <text
-          key={`x-${item.label}-${index}`}
-          x={item.position}
-          y="98"
-          className="chart-axis-text"
-          textAnchor="middle"
-        >
-          {item.label}
-        </text>
-      ))}
-      <defs>
-        <linearGradient id="lineGradient" x1="0" x2="1" y1="0" y2="0">
-          <stop offset="0%" stopColor="#7f5bff" />
-          <stop offset="100%" stopColor="#5b6cff" />
-        </linearGradient>
-      </defs>
-    </svg>
+          {tooltipLabel ? <div className="chart-tooltip-label">{tooltipLabel}</div> : null}
+          <div className="chart-tooltip-value">{tooltipValue}</div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

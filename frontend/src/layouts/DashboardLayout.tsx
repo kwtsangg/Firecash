@@ -24,6 +24,7 @@ export default function DashboardLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [accountOptions, setAccountOptions] = useState<string[]>(["All Accounts"]);
   const [groupOptions, setGroupOptions] = useState<string[]>(["All Groups"]);
+  const [userName, setUserName] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -46,6 +47,26 @@ export default function DashboardLayout() {
       }
     };
     loadFilters();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadProfile = async () => {
+      try {
+        const profile = await get<{ name: string }>("/api/me");
+        if (isMounted) {
+          setUserName(profile.name);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setUserName(null);
+        }
+      }
+    };
+    loadProfile();
     return () => {
       isMounted = false;
     };
@@ -88,6 +109,9 @@ export default function DashboardLayout() {
               <div className="logo">Firecash</div>
             </div>
             <div className="nav-actions">
+              <span className="user-indicator">
+                {userName ? `Signed in as ${userName}` : "Signed in"}
+              </span>
               <Selector
                 label="Account"
                 value={account}

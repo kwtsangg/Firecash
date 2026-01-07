@@ -48,6 +48,18 @@ CREATE TABLE IF NOT EXISTS transactions (
   occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS recurring_transactions (
+  id UUID PRIMARY KEY,
+  account_id UUID NOT NULL REFERENCES accounts(id),
+  amount DOUBLE PRECISION NOT NULL,
+  currency_code TEXT NOT NULL,
+  transaction_type TEXT NOT NULL,
+  description TEXT,
+  interval_days INTEGER NOT NULL,
+  next_occurs_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS price_history (
   id UUID PRIMARY KEY,
   asset_id UUID NOT NULL REFERENCES assets(id),
@@ -76,6 +88,8 @@ CREATE TABLE IF NOT EXISTS api_keys (
 
 CREATE INDEX IF NOT EXISTS idx_accounts_user_id ON accounts(user_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_account_id ON transactions(account_id);
+CREATE INDEX IF NOT EXISTS idx_recurring_transactions_next_occurs_at
+  ON recurring_transactions(next_occurs_at);
 CREATE INDEX IF NOT EXISTS idx_assets_account_id ON assets(account_id);
 CREATE INDEX IF NOT EXISTS idx_price_history_asset_id ON price_history(asset_id);
 CREATE INDEX IF NOT EXISTS idx_fx_rates_base_quote ON fx_rates(base_currency, quote_currency);

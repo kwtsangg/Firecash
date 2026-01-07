@@ -1,12 +1,20 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 export default function RegisterPage() {
+  const navigate = useNavigate();
+
   return (
     <div className="auth-page">
       <div className="auth-card">
         <h1>Create your account</h1>
         <p className="muted">Start tracking your net worth today.</p>
-        <form className="auth-form">
+        <form
+          className="auth-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            navigate("/dashboard");
+          }}
+        >
           <label>
             Name
             <input type="text" placeholder="Jane Doe" />

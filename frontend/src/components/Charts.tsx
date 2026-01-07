@@ -112,3 +112,44 @@ export function DonutChart({ values }: DonutChartProps) {
     </svg>
   );
 }
+
+type ComparisonBarChartProps = {
+  entries: { label: string; budget: number; actual: number }[];
+};
+
+export function ComparisonBarChart({ entries }: ComparisonBarChartProps) {
+  const max = Math.max(
+    ...entries.flatMap((entry) => [entry.budget, entry.actual]),
+    1,
+  );
+  return (
+    <div className="comparison-chart">
+      {entries.map((entry) => (
+        <div key={entry.label} className="comparison-row">
+          <span className="comparison-label">{entry.label}</span>
+          <div className="comparison-bars">
+            <div
+              className="comparison-bar budget"
+              style={{ width: `${(entry.budget / max) * 100}%` }}
+            />
+            <div
+              className="comparison-bar actual"
+              style={{ width: `${(entry.actual / max) * 100}%` }}
+            />
+          </div>
+          <span className="comparison-values">
+            {entry.actual.toFixed(0)} / {entry.budget.toFixed(0)}
+          </span>
+        </div>
+      ))}
+      <div className="comparison-legend">
+        <span>
+          <span className="legend-dot budget-dot" /> Budget
+        </span>
+        <span>
+          <span className="legend-dot actual-dot" /> Actual
+        </span>
+      </div>
+    </div>
+  );
+}

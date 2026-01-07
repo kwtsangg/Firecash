@@ -1,6 +1,9 @@
 pub mod account_groups;
 pub mod accounts;
 pub mod assets;
+pub mod budgets;
+pub mod categories;
 pub mod metrics;
+pub mod payees;
 pub mod recurring_transactions;
 pub mod transactions;

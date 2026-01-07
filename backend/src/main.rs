@@ -3,7 +3,7 @@ mod models;
 mod routes;
 mod state;
 
-use axum::{routing::get, routing::post, Router};
+use axum::{routing::get, routing::post, routing::put, Router};
 use sqlx::postgres::PgPoolOptions;
 use std::net::SocketAddr;
 use tower_http::cors::{Any, CorsLayer};
@@ -61,6 +61,30 @@ async fn main() {
                 .post(routes::recurring_transactions::create_recurring_transaction),
         )
         .route("/api/assets", get(routes::assets::list_assets).post(routes::assets::create_asset))
+        .route(
+            "/api/categories",
+            get(routes::categories::list_categories).post(routes::categories::create_category),
+        )
+        .route(
+            "/api/categories/:id",
+            put(routes::categories::update_category).delete(routes::categories::delete_category),
+        )
+        .route(
+            "/api/payees",
+            get(routes::payees::list_payees).post(routes::payees::create_payee),
+        )
+        .route(
+            "/api/payees/:id",
+            put(routes::payees::update_payee).delete(routes::payees::delete_payee),
+        )
+        .route(
+            "/api/budgets",
+            get(routes::budgets::list_budgets).post(routes::budgets::create_budget),
+        )
+        .route(
+            "/api/budgets/:id",
+            put(routes::budgets::update_budget).delete(routes::budgets::delete_budget),
+        )
         .route("/api/totals", get(routes::metrics::totals))
         .route("/api/history", get(routes::metrics::history))
         .route("/api/fx-rates", get(routes::metrics::fx_rates))

@@ -343,6 +343,66 @@ a {
   border-radius: 50%;
 }
 
+.comparison-chart {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.comparison-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 90px;
+  gap: 12px;
+  align-items: center;
+  font-size: 12px;
+  color: #9aa3ba;
+}
+
+.comparison-label {
+  color: #f5f6ff;
+}
+
+.comparison-bars {
+  display: grid;
+  gap: 4px;
+}
+
+.comparison-bar {
+  height: 6px;
+  border-radius: 999px;
+}
+
+.comparison-bar.budget {
+  background: rgba(127, 91, 255, 0.6);
+}
+
+.comparison-bar.actual {
+  background: #43d6b1;
+}
+
+.comparison-values {
+  text-align: right;
+}
+
+.comparison-legend {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: #9aa3ba;
+}
+
+.comparison-legend .legend-dot {
+  margin-right: 6px;
+}
+
+.legend-dot.budget-dot {
+  background: rgba(127, 91, 255, 0.6);
+}
+
+.legend-dot.actual-dot {
+  background: #43d6b1;
+}
+
 .split-grid {
   display: grid;
   gap: 16px;
@@ -378,8 +438,16 @@ a {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
+.columns-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .columns-3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.columns-7 {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
 .list-header {
@@ -404,6 +472,26 @@ a {
 
 .status.warn {
   color: #f7b955;
+}
+
+.budget-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.budget-track {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.budget-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #5b6cff, #7f5bff);
+  border-radius: inherit;
 }
 
 .chip-grid {
@@ -548,10 +636,6 @@ a {
 
 .columns-6 {
   grid-template-columns: repeat(6, minmax(0, 1fr));
-}
-
-.columns-7 {
-  grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
 .modal-overlay {

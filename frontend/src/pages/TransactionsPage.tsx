@@ -8,6 +8,8 @@ import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/cur
 
 export default function TransactionsPage() {
   const accountOptions = ["Primary Account", "Retirement", "Side Hustle"];
+  const categoryOptions = ["Housing", "Bills", "Lifestyle", "Investing"];
+  const payeeOptions = ["City Utilities", "Green Grocer", "Payroll"];
   const { currency: displayCurrency } = useCurrency();
   const { account: selectedAccount, group: selectedGroup } = useSelection();
   const [toast, setToast] = useState<ActionToastData | null>(null);
@@ -18,6 +20,8 @@ export default function TransactionsPage() {
   const [isTransactionOpen, setIsTransactionOpen] = useState(false);
   const [transactionAccount, setTransactionAccount] = useState(accountOptions[0]);
   const [transactionType, setTransactionType] = useState("Income");
+  const [transactionCategory, setTransactionCategory] = useState(categoryOptions[0]);
+  const [transactionPayee, setTransactionPayee] = useState(payeeOptions[0]);
   const [transactionAmount, setTransactionAmount] = useState("");
   const [transactionDate, setTransactionDate] = useState("2026-04-20");
   const [transactionCurrency, setTransactionCurrency] = useState("USD");
@@ -25,6 +29,8 @@ export default function TransactionsPage() {
     {
       date: string;
       account: string;
+      category: string;
+      payee: string;
       type: string;
       amount: number;
       currency: string;
@@ -34,6 +40,8 @@ export default function TransactionsPage() {
     {
       date: "2026-04-18",
       account: "Primary Account",
+      category: "Lifestyle",
+      payee: "Payroll",
       type: "Income",
       amount: 2400,
       currency: "USD",
@@ -42,6 +50,8 @@ export default function TransactionsPage() {
     {
       date: "2026-04-16",
       account: "Retirement",
+      category: "Investing",
+      payee: "City Utilities",
       type: "Expense",
       amount: 320,
       currency: "USD",
@@ -111,6 +121,8 @@ export default function TransactionsPage() {
                   {
                     date: transactionDate,
                     account: transactionAccount,
+                    category: transactionCategory,
+                    payee: transactionPayee,
                     type: transactionType,
                     amount,
                     currency: transactionCurrency,
@@ -151,6 +163,32 @@ export default function TransactionsPage() {
               {["Income", "Expense"].map((type) => (
                 <option key={type} value={type}>
                   {type}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Category
+            <select
+              value={transactionCategory}
+              onChange={(event) => setTransactionCategory(event.target.value)}
+            >
+              {categoryOptions.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Payee
+            <select
+              value={transactionPayee}
+              onChange={(event) => setTransactionPayee(event.target.value)}
+            >
+              {payeeOptions.map((payee) => (
+                <option key={payee} value={payee}>
+                  {payee}
                 </option>
               ))}
             </select>
@@ -230,17 +268,24 @@ export default function TransactionsPage() {
         ))}
       </div>
       <div className="card list-card">
-        <div className="list-row list-header columns-5">
+        <div className="list-row list-header columns-7">
           <span>Date</span>
           <span>Account</span>
+          <span>Category</span>
+          <span>Payee</span>
           <span>Type</span>
           <span>Amount ({displayCurrency})</span>
           <span>Status</span>
         </div>
         {filteredTransactions.map((row) => (
-          <div className="list-row columns-5" key={`${row.date}-${row.amount}-${row.account}`}>
+          <div
+            className="list-row columns-7"
+            key={`${row.date}-${row.amount}-${row.account}-${row.payee}`}
+          >
             <span>{row.date}</span>
             <span>{row.account}</span>
+            <span>{row.category}</span>
+            <span>{row.payee}</span>
             <span>{row.type}</span>
             <span className="amount-cell">
               <span>

@@ -33,6 +33,8 @@ pub struct CreateAccountGroupRequest {
 pub struct Transaction {
     pub id: Uuid,
     pub account_id: Uuid,
+    pub category_id: Option<Uuid>,
+    pub payee_id: Option<Uuid>,
     pub amount: f64,
     pub currency_code: String,
     pub transaction_type: String,
@@ -43,6 +45,8 @@ pub struct Transaction {
 #[derive(Deserialize)]
 pub struct CreateTransactionRequest {
     pub account_id: Uuid,
+    pub category_id: Option<Uuid>,
+    pub payee_id: Option<Uuid>,
     pub amount: f64,
     pub currency_code: String,
     pub transaction_type: String,
@@ -117,4 +121,70 @@ pub struct CreateAssetRequest {
     pub asset_type: String,
     pub quantity: f64,
     pub currency_code: String,
+}
+
+#[derive(Serialize, FromRow)]
+pub struct Category {
+    pub id: Uuid,
+    pub name: String,
+    pub color: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Deserialize)]
+pub struct CreateCategoryRequest {
+    pub name: String,
+    pub color: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateCategoryRequest {
+    pub name: String,
+    pub color: Option<String>,
+}
+
+#[derive(Serialize, FromRow)]
+pub struct Payee {
+    pub id: Uuid,
+    pub name: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Deserialize)]
+pub struct CreatePayeeRequest {
+    pub name: String,
+}
+
+#[derive(Deserialize)]
+pub struct UpdatePayeeRequest {
+    pub name: String,
+}
+
+#[derive(Serialize, FromRow)]
+pub struct Budget {
+    pub id: Uuid,
+    pub category_id: Uuid,
+    pub amount: f64,
+    pub currency_code: String,
+    pub period_start: NaiveDate,
+    pub period_end: NaiveDate,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Deserialize)]
+pub struct CreateBudgetRequest {
+    pub category_id: Uuid,
+    pub amount: f64,
+    pub currency_code: String,
+    pub period_start: NaiveDate,
+    pub period_end: NaiveDate,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateBudgetRequest {
+    pub category_id: Uuid,
+    pub amount: f64,
+    pub currency_code: String,
+    pub period_start: NaiveDate,
+    pub period_end: NaiveDate,
 }

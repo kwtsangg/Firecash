@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
-import { BarChart, DonutChart, LineChart } from "../components/Charts";
+import { BarChart, ComparisonBarChart, DonutChart, LineChart } from "../components/Charts";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import KpiCard from "../components/KpiCard";
 import Modal from "../components/Modal";
@@ -63,6 +63,26 @@ export default function DashboardPage() {
       { name: "Cash", amount: 42000, currency: "USD", account: "Primary Account" },
       { name: "Brokerage", amount: 56000, currency: "USD", account: "Retirement" },
       { name: "Vacation Fund", amount: 18000, currency: "EUR", account: "Side Hustle" },
+    ],
+    [],
+  );
+
+  const categorySpend = useMemo(
+    () => [
+      { label: "Housing", value: 42 },
+      { label: "Lifestyle", value: 28 },
+      { label: "Bills", value: 18 },
+      { label: "Investing", value: 12 },
+    ],
+    [],
+  );
+
+  const budgetActuals = useMemo(
+    () => [
+      { label: "Housing", budget: 1800, actual: 1650 },
+      { label: "Lifestyle", budget: 900, actual: 1020 },
+      { label: "Bills", budget: 650, actual: 520 },
+      { label: "Investing", budget: 1200, actual: 980 },
     ],
     [],
   );
@@ -135,6 +155,13 @@ export default function DashboardPage() {
       { label: "Crypto", value: 9, color: "#f7b955" },
     ],
     [],
+  );
+  const budgetTotals = budgetActuals.reduce(
+    (totals, item) => ({
+      budget: totals.budget + item.budget,
+      actual: totals.actual + item.actual,
+    }),
+    { budget: 0, actual: 0 },
   );
 
   const totalAssets = filteredAssets.reduce(
@@ -426,6 +453,65 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
+        </div>
+      </div>
+      <div className="split-grid">
+        <div className="card">
+          <h3>Spending by category</h3>
+          <p className="muted">Share of expenses across budget groups.</p>
+          <BarChart values={categorySpend} />
+        </div>
+        <div className="card">
+          <h3>Budget vs actual</h3>
+          <p className="muted">Monthly spend compared to plan.</p>
+          <ComparisonBarChart entries={budgetActuals} />
+        </div>
+      </div>
+      <div className="card list-card">
+        <div className="card-header">
+          <div>
+            <h3>Budget summary</h3>
+            <p className="muted">Track remaining room by category.</p>
+          </div>
+          <button className="pill" onClick={() => setIsBudgetOpen(true)}>
+            Adjust budgets
+          </button>
+        </div>
+        <div className="list-row list-header columns-4">
+          <span>Category</span>
+          <span>Budget</span>
+          <span>Spent</span>
+          <span>Progress</span>
+        </div>
+        {budgetActuals.map((item) => {
+          const percentage = Math.round((item.actual / item.budget) * 100);
+          const statusClass = percentage > 100 ? "status warn" : "status";
+          return (
+            <div className="list-row columns-4" key={item.label}>
+              <span>{item.label}</span>
+              <span>{formatCurrency(item.budget, displayCurrency)}</span>
+              <span>{formatCurrency(item.actual, displayCurrency)}</span>
+              <div className="budget-progress">
+                <div className="budget-track">
+                  <div
+                    className="budget-fill"
+                    style={{ width: `${Math.min(percentage, 100)}%` }}
+                  />
+                </div>
+                <span className={statusClass}>{percentage}%</span>
+              </div>
+            </div>
+          );
+        })}
+        <div className="list-row summary-row columns-4">
+          <span>Total</span>
+          <span>{formatCurrency(budgetTotals.budget, displayCurrency)}</span>
+          <span>{formatCurrency(budgetTotals.actual, displayCurrency)}</span>
+          <span>
+            {budgetTotals.budget > 0
+              ? `${Math.round((budgetTotals.actual / budgetTotals.budget) * 100)}% used`
+              : "No budgets"}
+          </span>
         </div>
       </div>
       <div className="card">

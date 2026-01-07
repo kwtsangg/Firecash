@@ -417,6 +417,13 @@ a {
   max-width: 420px;
 }
 
+.toast-floating {
+  position: fixed;
+  top: 96px;
+  right: 32px;
+  z-index: 1000;
+}
+
 .toast-title {
   font-weight: 600;
 }
@@ -424,4 +431,8 @@ a {
 .toast-body {
   color: #9aa3ba;
   font-size: 13px;
+}
+
+.columns-6 {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }

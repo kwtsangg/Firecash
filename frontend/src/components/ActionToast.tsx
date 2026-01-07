@@ -19,7 +19,7 @@ export default function ActionToast({ toast, onDismiss }: ActionToastProps) {
   }, [onDismiss]);
 
   return (
-    <div className="toast" role="status" aria-live="polite">
+    <div className="toast toast-floating" role="status" aria-live="polite">
       <div className="toast-title">{toast.title}</div>
       {toast.description && <div className="toast-body">{toast.description}</div>}
     </div>

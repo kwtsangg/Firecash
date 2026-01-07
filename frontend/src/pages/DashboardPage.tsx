@@ -10,15 +10,40 @@ export default function DashboardPage() {
     to: "2024-12-31",
   });
   const [toast, setToast] = useState<ActionToastData | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
   };
 
-  const linePoints = useMemo(
-    () => [52, 60, 68, 64, 71, 78, 83, 79, 88, 94, 102, 110],
+  const baseSeries = useMemo(
+    () => [
+      { date: "2024-01-15", value: 52 },
+      { date: "2024-02-10", value: 60 },
+      { date: "2024-03-05", value: 68 },
+      { date: "2024-03-26", value: 64 },
+      { date: "2024-04-12", value: 71 },
+      { date: "2024-05-01", value: 78 },
+      { date: "2024-05-21", value: 83 },
+      { date: "2024-06-14", value: 79 },
+      { date: "2024-07-02", value: 88 },
+      { date: "2024-08-06", value: 94 },
+      { date: "2024-09-17", value: 102 },
+      { date: "2024-11-04", value: 110 },
+    ],
     [],
   );
+  const linePoints = useMemo(() => {
+    const fromDate = new Date(range.from);
+    const toDate = new Date(range.to);
+    const multiplier = 1 + refreshTick * 0.01;
+    return baseSeries
+      .filter((point) => {
+        const date = new Date(point.date);
+        return date >= fromDate && date <= toDate;
+      })
+      .map((point) => Math.round(point.value * multiplier));
+  }, [baseSeries, range.from, range.to, refreshTick]);
   const barValues = useMemo(
     () => [
       { label: "Mon", value: 10 },
@@ -59,7 +84,10 @@ export default function DashboardPage() {
           </button>
           <button
             className="pill"
-            onClick={() => showToast("Price refresh queued", "Fetching latest quotes.")}
+            onClick={() => {
+              setRefreshTick((prev) => prev + 1);
+              showToast("Price refresh queued", "Fetching latest quotes.");
+            }}
           >
             Refresh Prices
           </button>

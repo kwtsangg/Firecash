@@ -4,21 +4,83 @@ import { BarChart, DonutChart, LineChart } from "../components/Charts";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import KpiCard from "../components/KpiCard";
 
+type Holding = {
+  ticker: string;
+  shares: number;
+  avgEntry: number;
+  price: number;
+  change: number;
+  currency: string;
+  account: string;
+};
+
 export default function StocksPage() {
   const [toast, setToast] = useState<ActionToastData | null>(null);
   const [range, setRange] = useState<DateRange>({
     from: "2024-01-01",
     to: "2024-04-30",
   });
+  const [holdings, setHoldings] = useState<Holding[]>([
+    {
+      ticker: "AAPL",
+      shares: 42,
+      avgEntry: 168.2,
+      price: 182.14,
+      change: 1.4,
+      currency: "USD",
+      account: "Primary Account",
+    },
+    {
+      ticker: "TSLA",
+      shares: 16,
+      avgEntry: 192.4,
+      price: 175.22,
+      change: -0.6,
+      currency: "USD",
+      account: "Investments",
+    },
+    {
+      ticker: "0700.HK",
+      shares: 55,
+      avgEntry: 282.1,
+      price: 296.1,
+      change: 0.9,
+      currency: "HKD",
+      account: "HKD Growth",
+    },
+  ]);
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
   };
 
-  const performance = useMemo(
-    () => [120, 132, 128, 136, 142, 150, 147, 158, 162, 171, 176, 188],
+  const performanceSeries = useMemo(
+    () => [
+      { date: "2024-01-08", value: 120 },
+      { date: "2024-01-28", value: 132 },
+      { date: "2024-02-18", value: 128 },
+      { date: "2024-03-10", value: 136 },
+      { date: "2024-03-22", value: 142 },
+      { date: "2024-04-02", value: 150 },
+      { date: "2024-04-18", value: 147 },
+      { date: "2024-05-06", value: 158 },
+      { date: "2024-06-12", value: 162 },
+      { date: "2024-07-08", value: 171 },
+      { date: "2024-08-14", value: 176 },
+      { date: "2024-09-03", value: 188 },
+    ],
     [],
   );
+  const performance = useMemo(() => {
+    const fromDate = new Date(range.from);
+    const toDate = new Date(range.to);
+    return performanceSeries
+      .filter((point) => {
+        const date = new Date(point.date);
+        return date >= fromDate && date <= toDate;
+      })
+      .map((point) => point.value);
+  }, [performanceSeries, range.from, range.to]);
   const dividendBars = useMemo(
     () => [
       { label: "Jan", value: 240 },
@@ -55,7 +117,20 @@ export default function StocksPage() {
           </button>
           <button
             className="pill"
-            onClick={() => showToast("Quotes syncing", "Refreshing stock prices.")}
+            onClick={() => {
+              setHoldings((prev) =>
+                prev.map((holding) => {
+                  const updatedPrice = Number((holding.price * 1.01).toFixed(2));
+                  const updatedChange = Number((holding.change + 0.4).toFixed(1));
+                  return {
+                    ...holding,
+                    price: updatedPrice,
+                    change: updatedChange,
+                  };
+                }),
+              );
+              showToast("Quotes syncing", "Refreshing stock prices.");
+            }}
           >
             Sync Quotes
           </button>
@@ -120,42 +195,29 @@ export default function StocksPage() {
         </div>
       </div>
       <div className="card list-card">
-        <div className="list-row list-header columns-5">
+        <div className="list-row list-header columns-6">
           <span>Ticker</span>
           <span>Shares</span>
+          <span>Avg Entry</span>
           <span>Last Price</span>
           <span>Day Change</span>
           <span>Account</span>
         </div>
-        {[
-          {
-            ticker: "AAPL",
-            shares: "42",
-            price: "$182.14",
-            change: "+1.4%",
-            account: "Primary Account",
-          },
-          {
-            ticker: "TSLA",
-            shares: "16",
-            price: "$175.22",
-            change: "-0.6%",
-            account: "Investments",
-          },
-          {
-            ticker: "0700.HK",
-            shares: "55",
-            price: "HK$296.10",
-            change: "+0.9%",
-            account: "HKD Growth",
-          },
-        ].map((row) => (
-          <div className="list-row columns-5" key={row.ticker}>
+        {holdings.map((row) => (
+          <div className="list-row columns-6" key={row.ticker}>
             <span>{row.ticker}</span>
             <span>{row.shares}</span>
-            <span>{row.price}</span>
-            <span className={row.change.startsWith("-") ? "status warn" : "status"}>
-              {row.change}
+            <span>
+              {row.currency === "HKD" ? "HK$" : "$"}
+              {row.avgEntry.toFixed(2)}
+            </span>
+            <span>
+              {row.currency === "HKD" ? "HK$" : "$"}
+              {row.price.toFixed(2)}
+            </span>
+            <span className={row.change < 0 ? "status warn" : "status"}>
+              {row.change > 0 ? "+" : ""}
+              {row.change.toFixed(1)}%
             </span>
             <span>{row.account}</span>
           </div>

@@ -5,7 +5,7 @@ services:
     build:
       context: ./backend
     ports:
-      - "8080:8080"
+      - "8888:8080"
     environment:
       RUST_LOG: info
       DATABASE_URL: postgres://firecash:firecash@db:5432/firecash
@@ -27,7 +27,7 @@ services:
     build:
       context: ./frontend
     ports:
-      - "5173:80"
+      - "8800:80"
     depends_on:
       - api
 
@@ -39,7 +39,7 @@ services:
       POSTGRES_PASSWORD: firecash
       POSTGRES_DB: firecash
     ports:
-      - "5432:5432"
+      - "8801:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 

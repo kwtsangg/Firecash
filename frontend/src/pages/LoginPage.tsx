@@ -10,6 +10,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDemoLoading, setIsDemoLoading] = useState(false);
 
   return (
     <div className="auth-page">
@@ -67,6 +68,35 @@ export default function LoginPage() {
             {isSubmitting ? "Signing in..." : "Sign in"}
           </button>
         </form>
+        <button
+          className="pill"
+          type="button"
+          disabled={isDemoLoading}
+          onClick={async () => {
+            setError(null);
+            setIsDemoLoading(true);
+            try {
+              const response = await post<{ token: string }>(
+                "/api/demo-login",
+                undefined,
+                undefined,
+                { skipAuth: true },
+              );
+              login(response.token);
+              navigate("/dashboard");
+            } catch (err) {
+              if (err instanceof ApiError) {
+                setError(err.message);
+              } else {
+                setError("Unable to load the demo account.");
+              }
+            } finally {
+              setIsDemoLoading(false);
+            }
+          }}
+        >
+          {isDemoLoading ? "Loading demo..." : "Use demo account"}
+        </button>
         <p className="muted">
           Don’t have an account? <Link to="/register">Create one</Link>
         </p>

@@ -1,10 +1,11 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import { Selector } from "../components/Selectors";
 import { CurrencyProvider } from "../components/CurrencyContext";
 import { SelectionProvider } from "../components/SelectionContext";
 import { version } from "../../package.json";
 import { get } from "../utils/apiClient";
+import { useAuth } from "../components/AuthContext";
 
 const navigation = [
   { label: "Dashboard", to: "/dashboard" },
@@ -15,6 +16,8 @@ const navigation = [
 ];
 
 export default function DashboardLayout() {
+  const navigate = useNavigate();
+  const { logout } = useAuth();
   const [account, setAccount] = useState("All Accounts");
   const [group, setGroup] = useState("All Groups");
   const [currency, setCurrency] = useState("USD");
@@ -103,6 +106,16 @@ export default function DashboardLayout() {
                 options={["USD", "EUR", "GBP", "JPY", "HKD"]}
                 onChange={setCurrency}
               />
+              <button
+                type="button"
+                className="pill"
+                onClick={() => {
+                  logout();
+                  navigate("/login");
+                }}
+              >
+                Log out
+              </button>
             </div>
           </header>
           {isSidebarOpen && (

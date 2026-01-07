@@ -34,10 +34,23 @@ pub struct LoginRequest {
     pub password: String,
 }
 
+#[derive(Deserialize)]
+pub struct UpdateProfileRequest {
+    pub name: Option<String>,
+    pub email: Option<String>,
+}
+
 #[derive(Serialize)]
 pub struct AuthResponse {
     pub token: String,
     pub user_id: Uuid,
+}
+
+#[derive(Serialize)]
+pub struct UserProfile {
+    pub id: Uuid,
+    pub name: String,
+    pub email: String,
 }
 
 #[derive(Clone)]
@@ -134,6 +147,105 @@ pub async fn login(
     }))
 }
 
+pub async fn demo_login(
+    State(state): State<AppState>,
+) -> Result<Json<AuthResponse>, (StatusCode, String)> {
+    let demo_email = "demo@firecash.app";
+    let demo_name = "Demo User";
+    let demo_password = "demo-password";
+
+    let record = sqlx::query(
+        r#"
+        SELECT id, password_hash
+        FROM users
+        WHERE email = $1
+        "#,
+    )
+    .bind(demo_email)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(internal_error)?;
+
+    let user_id = if let Some(record) = record {
+        let password_hash: String = record.try_get("password_hash").map_err(internal_error)?;
+        verify_password(demo_password, &password_hash)?;
+        record.try_get("id").map_err(internal_error)?
+    } else {
+        let user_id = Uuid::new_v4();
+        let password_hash = hash_password(demo_password)?;
+        sqlx::query(
+            r#"
+            INSERT INTO users (id, name, email, password_hash)
+            VALUES ($1, $2, $3, $4)
+            "#,
+        )
+        .bind(user_id)
+        .bind(demo_name)
+        .bind(demo_email)
+        .bind(password_hash)
+        .execute(&state.pool)
+        .await
+        .map_err(internal_error)?;
+        user_id
+    };
+
+    seed_demo_data(&state.pool, user_id).await?;
+
+    let token = issue_token(&state.jwt_secret, user_id)?;
+    Ok(Json(AuthResponse { token, user_id }))
+}
+
+pub async fn me(
+    State(state): State<AppState>,
+    user: AuthenticatedUser,
+) -> Result<Json<UserProfile>, (StatusCode, String)> {
+    let record = sqlx::query(
+        r#"
+        SELECT id, name, email
+        FROM users
+        WHERE id = $1
+        "#,
+    )
+    .bind(user.id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(internal_error)?;
+
+    Ok(Json(UserProfile {
+        id: record.try_get("id").map_err(internal_error)?,
+        name: record.try_get("name").map_err(internal_error)?,
+        email: record.try_get("email").map_err(internal_error)?,
+    }))
+}
+
+pub async fn update_me(
+    State(state): State<AppState>,
+    user: AuthenticatedUser,
+    Json(payload): Json<UpdateProfileRequest>,
+) -> Result<Json<UserProfile>, (StatusCode, String)> {
+    let record = sqlx::query(
+        r#"
+        UPDATE users
+        SET name = COALESCE($1, name),
+            email = COALESCE($2, email)
+        WHERE id = $3
+        RETURNING id, name, email
+        "#,
+    )
+    .bind(payload.name)
+    .bind(payload.email)
+    .bind(user.id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(internal_error)?;
+
+    Ok(Json(UserProfile {
+        id: record.try_get("id").map_err(internal_error)?,
+        name: record.try_get("name").map_err(internal_error)?,
+        email: record.try_get("email").map_err(internal_error)?,
+    }))
+}
+
 fn issue_token(secret: &str, user_id: Uuid) -> Result<String, (StatusCode, String)> {
     let exp = (Utc::now() + Duration::days(7)).timestamp() as usize;
     let claims = Claims {
@@ -172,4 +284,161 @@ pub async fn ensure_database(pool: &PgPool) -> Result<(), sqlx::Error> {
         .execute(pool)
         .await
         .map(|_| ())
+}
+
+async fn seed_demo_data(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<(), (StatusCode, String)> {
+    let existing_accounts: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint
+        FROM accounts
+        WHERE user_id = $1
+        "#,
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+    .map_err(internal_error)?;
+
+    if existing_accounts > 0 {
+        return Ok(());
+    }
+
+    let checking_id = Uuid::new_v4();
+    let brokerage_id = Uuid::new_v4();
+    let group_id = Uuid::new_v4();
+
+    sqlx::query(
+        r#"
+        INSERT INTO account_groups (id, user_id, name)
+        VALUES ($1, $2, $3)
+        "#,
+    )
+    .bind(group_id)
+    .bind(user_id)
+    .bind("Investments")
+    .execute(pool)
+    .await
+    .map_err(internal_error)?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO accounts (id, user_id, name, currency_code)
+        VALUES ($1, $2, $3, $4),
+               ($5, $6, $7, $8)
+        "#,
+    )
+    .bind(checking_id)
+    .bind(user_id)
+    .bind("Everyday Checking")
+    .bind("USD")
+    .bind(brokerage_id)
+    .bind(user_id)
+    .bind("Brokerage")
+    .bind("USD")
+    .execute(pool)
+    .await
+    .map_err(internal_error)?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO account_group_members (group_id, account_id)
+        VALUES ($1, $2)
+        "#,
+    )
+    .bind(group_id)
+    .bind(brokerage_id)
+    .execute(pool)
+    .await
+    .map_err(internal_error)?;
+
+    let asset_id = Uuid::new_v4();
+    sqlx::query(
+        r#"
+        INSERT INTO assets (id, account_id, symbol, asset_type, quantity, currency_code)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        "#,
+    )
+    .bind(asset_id)
+    .bind(brokerage_id)
+    .bind("AAPL")
+    .bind("Stock")
+    .bind(12.0_f64)
+    .bind("USD")
+    .execute(pool)
+    .await
+    .map_err(internal_error)?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO price_history (id, asset_id, price, currency_code, recorded_at)
+        VALUES ($1, $2, $3, $4, NOW() - INTERVAL '7 days'),
+               ($5, $6, $7, $8, NOW() - INTERVAL '3 days'),
+               ($9, $10, $11, $12, NOW())
+        "#,
+    )
+    .bind(Uuid::new_v4())
+    .bind(asset_id)
+    .bind(182.0_f64)
+    .bind("USD")
+    .bind(Uuid::new_v4())
+    .bind(asset_id)
+    .bind(188.0_f64)
+    .bind("USD")
+    .bind(Uuid::new_v4())
+    .bind(asset_id)
+    .bind(191.5_f64)
+    .bind("USD")
+    .execute(pool)
+    .await
+    .map_err(internal_error)?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO transactions (id, account_id, amount, currency_code, transaction_type, description, occurred_at)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW() - INTERVAL '14 days'),
+               ($7, $8, $9, $10, $11, $12, NOW() - INTERVAL '7 days'),
+               ($13, $14, $15, $16, $17, $18, NOW() - INTERVAL '1 day')
+        "#,
+    )
+    .bind(Uuid::new_v4())
+    .bind(checking_id)
+    .bind(3200.0_f64)
+    .bind("USD")
+    .bind("income")
+    .bind("Monthly salary")
+    .bind(Uuid::new_v4())
+    .bind(checking_id)
+    .bind(850.0_f64)
+    .bind("USD")
+    .bind("expense")
+    .bind("Rent")
+    .bind(Uuid::new_v4())
+    .bind(checking_id)
+    .bind(140.0_f64)
+    .bind("USD")
+    .bind("expense")
+    .bind("Utilities")
+    .execute(pool)
+    .await
+    .map_err(internal_error)?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO fx_rates (id, base_currency, quote_currency, rate, recorded_on)
+        VALUES ($1, $2, $3, $4, CURRENT_DATE)
+        ON CONFLICT DO NOTHING
+        "#,
+    )
+    .bind(Uuid::new_v4())
+    .bind("USD")
+    .bind("USD")
+    .bind(1.0_f64)
+    .execute(pool)
+    .await
+    .map_err(internal_error)?;
+
+    Ok(())
 }

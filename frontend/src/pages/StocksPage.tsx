@@ -187,27 +187,29 @@ export default function StocksPage() {
     .filter((index) => performanceSeries[index])
     .map((index) => axisDateFormat.format(new Date(performanceSeries[index].date)));
 
-  const dividendBars = useMemo(
-    () =>
-      [
-        { label: "Jan", value: 240 },
-        { label: "Feb", value: 180 },
-        { label: "Mar", value: 320 },
-        { label: "Apr", value: 210 },
-      ],
-    [],
-  );
+  const dividendBars = useMemo(() => {
+    if (holdings.length === 0) {
+      return [];
+    }
+    return [
+      { label: "Jan", value: 240 },
+      { label: "Feb", value: 180 },
+      { label: "Mar", value: 320 },
+      { label: "Apr", value: 210 },
+    ];
+  }, [holdings.length]);
 
-  const sectorMix = useMemo(
-    () =>
-      [
-        { label: "Tech", value: 45, color: "#7f5bff" },
-        { label: "Healthcare", value: 22, color: "#43d6b1" },
-        { label: "Finance", value: 18, color: "#f7b955" },
-        { label: "Energy", value: 15, color: "#5b6cff" },
-      ],
-    [],
-  );
+  const sectorMix = useMemo(() => {
+    if (holdings.length === 0) {
+      return [];
+    }
+    return [
+      { label: "Tech", value: 45, color: "#7f5bff" },
+      { label: "Healthcare", value: 22, color: "#43d6b1" },
+      { label: "Finance", value: 18, color: "#f7b955" },
+      { label: "Energy", value: 15, color: "#5b6cff" },
+    ];
+  }, [holdings.length]);
 
   const totalEquity = filteredHoldings.reduce((sum, holding) => {
     if (!holding.price) {
@@ -253,6 +255,11 @@ export default function StocksPage() {
       </section>
     );
   }
+
+  const equityTrend = totalMarketValue === 0 ? "0%" : "+3.8%";
+  const dividendYield = totalMarketValue === 0 ? "0%" : "2.9%";
+  const dayChangeTrend =
+    totalMarketValue === 0 ? "0%" : dayChange >= 0 ? "+1.1%" : "-0.6%";
 
   return (
     <section className="page">
@@ -400,19 +407,19 @@ export default function StocksPage() {
         <KpiCard
           label="Total Equity"
           value={formatCurrency(totalEquity, displayCurrency)}
-          trend="+3.8%"
+          trend={equityTrend}
           footnote="vs last period"
         />
         <KpiCard
           label="Dividend Yield"
-          value="2.9%"
-          trend="Stable"
+          value={dividendYield}
+          trend={totalMarketValue === 0 ? "No data" : "Stable"}
           footnote="trailing 12 months"
         />
         <KpiCard
           label="Day Change"
           value={formatCurrency(dayChange, displayCurrency)}
-          trend={dayChange >= 0 ? "+1.1%" : "-0.6%"}
+          trend={dayChangeTrend}
           footnote="market open"
         />
       </div>
@@ -447,20 +454,30 @@ export default function StocksPage() {
         <div className="card">
           <h3>Dividend cashflow</h3>
           <p className="muted">Quarterly income distribution.</p>
-          <BarChart values={dividendBars} />
+          {dividendBars.length === 0 ? (
+            <p className="muted">No dividend activity yet.</p>
+          ) : (
+            <BarChart values={dividendBars} />
+          )}
         </div>
         <div className="card">
           <h3>Sector allocation</h3>
           <p className="muted">Diversification across industries.</p>
-          <DonutChart values={sectorMix} />
-          <div className="legend">
-            {sectorMix.map((item) => (
-              <div key={item.label} className="legend-item">
-                <span className="legend-dot" style={{ background: item.color }} />
-                {item.label}
+          {sectorMix.length === 0 ? (
+            <p className="muted">No allocations yet.</p>
+          ) : (
+            <>
+              <DonutChart values={sectorMix} />
+              <div className="legend">
+                {sectorMix.map((item) => (
+                  <div key={item.label} className="legend-item">
+                    <span className="legend-dot" style={{ background: item.color }} />
+                    {item.label}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          )}
         </div>
       </div>
       <div className="card list-card">

@@ -312,6 +312,17 @@ export default function DashboardPage() {
     .filter((index) => lineSeries[index])
     .map((index) => axisDateFormat.format(new Date(lineSeries[index].date)));
 
+  const hasHistory = lineSeries.length > 1 && lineSeries.some((point) => point.value !== 0);
+  const growthValue = hasHistory
+    ? ((lineSeries[lineSeries.length - 1].value - lineSeries[0].value) /
+        Math.max(Math.abs(lineSeries[0].value), 1)) *
+      100
+    : 0;
+  const growthLabel = `${growthValue.toFixed(1)}%`;
+  const assetTrend = totalAssets === 0 ? "0%" : "+4.2%";
+  const netIncomeTrend =
+    filteredTransactions.length === 0 ? "0%" : netIncome >= 0 ? "+12%" : "-6%";
+
   if (isLoading) {
     return (
       <section className="page">
@@ -507,19 +518,19 @@ export default function DashboardPage() {
         <KpiCard
           label="Total Assets"
           value={formatCurrency(totalAssets, displayCurrency)}
-          trend="+4.2%"
+          trend={assetTrend}
           footnote="vs last period"
         />
         <KpiCard
           label="Net Income"
           value={formatCurrency(netIncome, displayCurrency)}
-          trend={netIncome >= 0 ? "+12%" : "-6%"}
+          trend={netIncomeTrend}
           footnote="This month"
         />
         <KpiCard
           label="Growth"
-          value="+12.4%"
-          trend="Stable"
+          value={growthLabel}
+          trend={hasHistory ? "Stable" : "No data"}
           footnote="Year to date"
         />
       </div>

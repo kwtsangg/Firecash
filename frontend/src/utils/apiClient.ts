@@ -116,3 +116,15 @@ export function post<T>(path: string, body?: unknown, options?: RequestInit, con
     config,
   );
 }
+
+export function put<T>(path: string, body?: unknown, options?: RequestInit, config?: { skipAuth?: boolean }) {
+  return apiRequest<T>(
+    path,
+    {
+      ...options,
+      method: "PUT",
+      body: body === undefined ? undefined : JSON.stringify(body),
+    },
+    config,
+  );
+}

@@ -44,6 +44,8 @@ async fn main() {
         .route("/health", get(health))
         .route("/api/register", post(auth::register))
         .route("/api/login", post(auth::login))
+        .route("/api/demo-login", post(auth::demo_login))
+        .route("/api/me", get(auth::me).put(auth::update_me))
         .route("/api/accounts", get(routes::accounts::list_accounts).post(routes::accounts::create_account))
         .route(
             "/api/accounts/{id}",

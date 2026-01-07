@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
 import { useAuth } from "../components/AuthContext";
-import { ApiError, get, put } from "../utils/apiClient";
+import { ApiError, get, post, put } from "../utils/apiClient";
 import { readCategories, storeCategories } from "../utils/categories";
 import { readStrategies, storeStrategies } from "../utils/strategies";
 import { formatDateDisplay } from "../utils/date";
@@ -72,24 +72,17 @@ export default function SettingsPage() {
     storeStrategies(strategies);
   }, [strategies]);
 
+  const loadFxRates = async () => {
+    try {
+      const response = await get<FxRate[]>("/api/fx-rates");
+      setFxRates(response);
+    } catch (error) {
+      setFxRates([]);
+    }
+  };
+
   useEffect(() => {
-    let isMounted = true;
-    const loadFxRates = async () => {
-      try {
-        const response = await get<FxRate[]>("/api/fx-rates");
-        if (isMounted) {
-          setFxRates(response);
-        }
-      } catch (error) {
-        if (isMounted) {
-          setFxRates([]);
-        }
-      }
-    };
     loadFxRates();
-    return () => {
-      isMounted = false;
-    };
   }, []);
 
   return (
@@ -182,7 +175,15 @@ export default function SettingsPage() {
           </div>
           <button
             className="pill"
-            onClick={() => showToast("FX sync queued", "Refreshing conversion rates.")}
+            onClick={async () => {
+              try {
+                await post("/api/fx-rates/refresh");
+                await loadFxRates();
+                showToast("FX sync complete", "Rates have been refreshed.");
+              } catch (error) {
+                showToast("FX sync failed", "Unable to refresh FX rates.");
+              }
+            }}
           >
             Sync FX rates
           </button>
@@ -202,6 +203,21 @@ export default function SettingsPage() {
               onClick={() => showToast("Export queued", "Dashboard export will download shortly.")}
             >
               Export dashboard
+            </button>
+          </div>
+        </div>
+        <div className="card">
+          <h3>Quick actions</h3>
+          <p className="muted">Common shortcuts and utilities.</p>
+          <div className="action-grid">
+            <button
+              className="pill"
+              onClick={() => showToast("Group creator ready", "Name your new group.")}
+            >
+              Create Group
+            </button>
+            <button className="pill" onClick={() => showToast("Snapshot shared", "Link copied.")}>
+              Share Snapshot
             </button>
           </div>
         </div>

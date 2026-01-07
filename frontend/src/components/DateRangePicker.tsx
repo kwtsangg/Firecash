@@ -11,7 +11,6 @@ type Preset = {
 };
 
 const presets: Preset[] = [
-  { label: "1D", days: 1 },
   { label: "7D", days: 7 },
   { label: "30D", days: 30 },
   { label: "90D", days: 90 },
@@ -34,14 +33,13 @@ export default function DateRangePicker({
   onPreset,
 }: DateRangePickerProps) {
   const presetValues = useMemo(() => {
-    const anchor = new Date(value.to);
-    const today = Number.isNaN(anchor.getTime()) ? new Date() : anchor;
+    const today = new Date();
     return presets.map((preset) => ({
       label: preset.label,
       from: formatDate(new Date(today.getTime() - preset.days * 86400000)),
       to: formatDate(today),
     }));
-  }, [value.to]);
+  }, []);
 
   return (
     <div className="date-range">

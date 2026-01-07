@@ -7,6 +7,7 @@ import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import SettingsPage from "./pages/SettingsPage";
 import StocksPage from "./pages/StocksPage";
+import StockMarketPage from "./pages/StockMarketPage";
 import TransactionsPage from "./pages/TransactionsPage";
 
 export default function App() {
@@ -24,6 +25,7 @@ export default function App() {
       >
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/stocks" element={<StocksPage />} />
+        <Route path="/stocks/market" element={<StockMarketPage />} />
         <Route path="/transactions" element={<TransactionsPage />} />
         <Route path="/accounts" element={<AccountsPage />} />
         <Route path="/settings" element={<SettingsPage />} />

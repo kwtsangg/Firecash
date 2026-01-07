@@ -286,6 +286,38 @@ a {
   color: #9aa3ba;
 }
 
+.search-input {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+}
+
+.symbol-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.symbol-card {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.symbol-card.active {
+  border-color: rgba(127, 91, 255, 0.7);
+  box-shadow: 0 0 0 1px rgba(127, 91, 255, 0.4);
+}
+
 .preset-buttons {
   display: flex;
   gap: 8px;
@@ -511,6 +543,14 @@ a {
   font-size: 14px;
 }
 
+.row-selected {
+  background: rgba(127, 91, 255, 0.08);
+}
+
+.row-edited {
+  outline: 1px solid rgba(67, 214, 177, 0.35);
+}
+
 .empty-state {
   color: #9aa3ba;
   font-style: italic;
@@ -519,6 +559,15 @@ a {
 .summary-row {
   font-weight: 600;
   border-bottom: none;
+}
+
+.confirm-list {
+  display: grid;
+  gap: 12px;
+}
+
+.confirm-section h4 {
+  margin-bottom: 6px;
 }
 
 .columns-5 {

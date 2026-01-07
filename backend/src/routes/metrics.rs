@@ -1,10 +1,11 @@
-use axum::{extract::State, Json};
+use axum::{extract::State, http::StatusCode, Json};
 use chrono::{Duration, Utc};
 use sqlx::Row;
 
 use crate::{
     auth::AuthenticatedUser,
     models::{CurrencyTotal, FxRate, HistoryPoint, TotalsResponse},
+    services::forex::refresh_fx_rates,
     state::AppState,
 };
 
@@ -169,4 +170,14 @@ pub async fn fx_rates(
     .map_err(crate::auth::internal_error)?;
 
     Ok(Json(records))
+}
+
+pub async fn refresh_fx(
+    State(state): State<AppState>,
+    _user: AuthenticatedUser,
+) -> Result<StatusCode, (axum::http::StatusCode, String)> {
+    refresh_fx_rates(&state.pool)
+        .await
+        .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+    Ok(StatusCode::NO_CONTENT)
 }

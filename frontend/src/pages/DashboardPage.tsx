@@ -7,6 +7,7 @@ import Modal from "../components/Modal";
 import { useCurrency } from "../components/CurrencyContext";
 import { useSelection } from "../components/SelectionContext";
 import { get, post } from "../utils/apiClient";
+import { readCategories } from "../utils/categories";
 import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
 import {
   formatDateDisplay,
@@ -56,6 +57,7 @@ type AssetDisplay = {
 type TransactionDisplay = {
   account: string;
   type: string;
+  category: string;
   amount: number;
   currency: string;
   date: string;
@@ -78,6 +80,8 @@ export default function DashboardPage() {
   const [transactionDate, setTransactionDate] = useState(() => toDateInputValue(new Date()));
   const [transactionNotes, setTransactionNotes] = useState("");
   const [transactionCurrency, setTransactionCurrency] = useState("USD");
+  const [categories] = useState(() => readCategories());
+  const [transactionCategory, setTransactionCategory] = useState(() => categories[0] ?? "General");
   const [budgetCategory, setBudgetCategory] = useState("Housing");
   const [budgetAmount, setBudgetAmount] = useState("");
   const [budgetStart, setBudgetStart] = useState(() => toDateInputValue(startOfMonth(new Date())));
@@ -113,6 +117,7 @@ export default function DashboardPage() {
           amount: item.amount,
           currency: item.currency_code,
           date: item.occurred_at.split("T")[0],
+          category: "Uncategorized",
           notes: item.description ?? "Manual entry",
         }));
 
@@ -136,6 +141,12 @@ export default function DashboardPage() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!categories.includes(transactionCategory)) {
+      setTransactionCategory(categories[0] ?? "General");
+    }
+  }, [categories, transactionCategory]);
 
   const accountOptions = useMemo(
     () => accounts.map((item) => ({ id: item.id, name: item.name })),
@@ -254,6 +265,7 @@ export default function DashboardPage() {
           amount: created.amount,
           currency: created.currency_code,
           date: created.occurred_at.split("T")[0],
+          category: transactionCategory,
           notes: created.description ?? "Manual entry",
         },
         ...prev,
@@ -431,6 +443,19 @@ export default function DashboardPage() {
             </select>
           </label>
           <label>
+            Category
+            <select
+              value={transactionCategory}
+              onChange={(event) => setTransactionCategory(event.target.value)}
+            >
+              {categories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
             Date
             <input
               type="date"
@@ -603,24 +628,26 @@ export default function DashboardPage() {
         </div>
       </div>
       <div className="card list-card">
-        <div className="list-row list-header columns-5">
+        <div className="list-row list-header columns-6">
           <span>Date</span>
           <span>Account</span>
           <span>Type</span>
+          <span>Category</span>
           <span>Amount ({displayCurrency})</span>
           <span>Notes</span>
         </div>
         {filteredTransactions.length === 0 ? (
-          <div className="list-row columns-5 empty-state">No transactions available.</div>
+          <div className="list-row columns-6 empty-state">No transactions available.</div>
         ) : (
           filteredTransactions.map((transaction) => (
             <div
-              className="list-row columns-5"
+              className="list-row columns-6"
               key={`${transaction.date}-${transaction.amount}-${transaction.notes}`}
             >
               <span>{formatDateDisplay(transaction.date)}</span>
               <span>{transaction.account}</span>
               <span>{transaction.type}</span>
+              <span>{transaction.category}</span>
               <span className="amount-cell">
                 <span>
                   {formatCurrency(

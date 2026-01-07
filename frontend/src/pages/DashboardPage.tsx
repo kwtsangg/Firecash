@@ -6,8 +6,9 @@ import KpiCard from "../components/KpiCard";
 import Modal from "../components/Modal";
 import { useCurrency } from "../components/CurrencyContext";
 import { useSelection } from "../components/SelectionContext";
-import { get } from "../utils/apiClient";
+import { get, post } from "../utils/apiClient";
 import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
+import { getDefaultRange, startOfMonth, toDateInputValue, toIsoDateTime } from "../utils/date";
 
 type Account = {
   id: string;
@@ -66,10 +67,7 @@ const chartPalette = ["#7f5bff", "#5b6cff", "#43d6b1", "#f7b955", "#ff7aa2"];
 export default function DashboardPage() {
   const { currency: displayCurrency } = useCurrency();
   const { account: selectedAccount, group: selectedGroup } = useSelection();
-  const [range, setRange] = useState<DateRange>({
-    from: "2026-01-01",
-    to: "2026-12-31",
-  });
+  const [range, setRange] = useState<DateRange>(() => getDefaultRange(90));
   const [toast, setToast] = useState<ActionToastData | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
   const [isTransactionOpen, setIsTransactionOpen] = useState(false);
@@ -77,12 +75,12 @@ export default function DashboardPage() {
   const [transactionAccount, setTransactionAccount] = useState("");
   const [transactionType, setTransactionType] = useState("Income");
   const [transactionAmount, setTransactionAmount] = useState("");
-  const [transactionDate, setTransactionDate] = useState("2026-04-20");
+  const [transactionDate, setTransactionDate] = useState(() => toDateInputValue(new Date()));
   const [transactionNotes, setTransactionNotes] = useState("");
   const [transactionCurrency, setTransactionCurrency] = useState("USD");
   const [budgetCategory, setBudgetCategory] = useState("Housing");
   const [budgetAmount, setBudgetAmount] = useState("");
-  const [budgetStart, setBudgetStart] = useState("2026-04-01");
+  const [budgetStart, setBudgetStart] = useState(() => toDateInputValue(startOfMonth(new Date())));
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [transactions, setTransactions] = useState<TransactionDisplay[]>([]);
@@ -125,7 +123,7 @@ export default function DashboardPage() {
         setTransactions(mappedTransactions);
         setTotals(totalsResponse);
         setHistory(historyResponse);
-        setTransactionAccount(accountsResponse[0]?.name ?? "");
+        setTransactionAccount(accountsResponse[0]?.id ?? "");
       } catch (err) {
         if (isMounted) {
           setError("Unable to load dashboard data.");
@@ -143,7 +141,7 @@ export default function DashboardPage() {
   }, []);
 
   const accountOptions = useMemo(
-    () => accounts.map((item) => item.name),
+    () => accounts.map((item) => ({ id: item.id, name: item.name })),
     [accounts],
   );
 
@@ -230,6 +228,46 @@ export default function DashboardPage() {
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
+  };
+
+  const handleSaveTransaction = async () => {
+    const amount = Number(transactionAmount);
+    if (!amount) {
+      showToast("Missing amount", "Enter a transaction amount to save.");
+      return;
+    }
+    if (!transactionAccount) {
+      showToast("Missing account", "Select an account to save this transaction.");
+      return;
+    }
+    const accountName = accounts.find((account) => account.id === transactionAccount)?.name ?? "Unknown";
+    try {
+      const created = await post<Transaction>("/api/transactions", {
+        account_id: transactionAccount,
+        amount,
+        currency_code: transactionCurrency,
+        transaction_type: transactionType.toLowerCase(),
+        description: transactionNotes || null,
+        occurred_at: toIsoDateTime(transactionDate),
+      });
+      setTransactions((prev) => [
+        {
+          account: accountName,
+          type: created.transaction_type === "income" ? "Income" : "Expense",
+          amount: created.amount,
+          currency: created.currency_code,
+          date: created.occurred_at.split("T")[0],
+          notes: created.description ?? "Manual entry",
+        },
+        ...prev,
+      ]);
+      setIsTransactionOpen(false);
+      setTransactionAmount("");
+      setTransactionNotes("");
+      showToast("Transaction saved", "Your entry has been recorded.");
+    } catch (err) {
+      showToast("Save failed", "Unable to save this transaction.");
+    }
   };
 
   const totalAssets = totals
@@ -327,28 +365,7 @@ export default function DashboardPage() {
             <button
               className="pill primary"
               type="button"
-              onClick={() => {
-                const amount = Number(transactionAmount);
-                if (!amount) {
-                  showToast("Missing amount", "Enter a transaction amount to save.");
-                  return;
-                }
-                setTransactions((prev) => [
-                  {
-                    account: transactionAccount,
-                    type: transactionType,
-                    amount,
-                    currency: transactionCurrency,
-                    date: transactionDate,
-                    notes: transactionNotes || "Manual entry",
-                  },
-                  ...prev,
-                ]);
-                setIsTransactionOpen(false);
-                setTransactionAmount("");
-                setTransactionNotes("");
-                showToast("Transaction saved", "Your entry has been recorded.");
-              }}
+              onClick={handleSaveTransaction}
             >
               Save Transaction
             </button>
@@ -362,11 +379,17 @@ export default function DashboardPage() {
               value={transactionAccount}
               onChange={(event) => setTransactionAccount(event.target.value)}
             >
-              {accountOptions.map((account) => (
-                <option key={account} value={account}>
-                  {account}
+              {accountOptions.length === 0 ? (
+                <option value="" disabled>
+                  No accounts available
                 </option>
-              ))}
+              ) : (
+                accountOptions.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))
+              )}
             </select>
           </label>
           <label>

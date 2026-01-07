@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
 import Modal from "../components/Modal";
 import { useSelection } from "../components/SelectionContext";
-import { get } from "../utils/apiClient";
+import { get, post } from "../utils/apiClient";
 
 type Account = {
   id: string;
@@ -66,6 +66,45 @@ export default function AccountsPage() {
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
+  };
+
+  const handleCreateGroup = async () => {
+    if (!groupName.trim()) {
+      showToast("Missing name", "Enter a group name to save.");
+      return;
+    }
+    try {
+      const created = await post<AccountGroup>("/api/account-groups", {
+        name: groupName.trim(),
+        account_ids: [],
+      });
+      setGroups((prev) => [created, ...prev]);
+      setIsGroupOpen(false);
+      showToast("Group created", `Created ${created.name}.`);
+      setGroupName("");
+    } catch (err) {
+      showToast("Save failed", "Unable to create this group.");
+    }
+  };
+
+  const handleCreateAccount = async () => {
+    if (!accountName.trim()) {
+      showToast("Missing name", "Enter an account name to save.");
+      return;
+    }
+    try {
+      const created = await post<Account>("/api/accounts", {
+        name: accountName.trim(),
+        currency_code: accountCurrency,
+      });
+      setAccounts((prev) => [created, ...prev]);
+      setIsAccountOpen(false);
+      setMembershipAccount(created.name);
+      showToast("Account saved", `Added ${created.name}.`);
+      setAccountName("");
+    } catch (err) {
+      showToast("Save failed", "Unable to create this account.");
+    }
   };
 
   const accountRows = useMemo(
@@ -138,11 +177,7 @@ export default function AccountsPage() {
             <button
               className="pill primary"
               type="button"
-              onClick={() => {
-                setIsGroupOpen(false);
-                showToast("Group created", groupName ? `Created ${groupName}.` : "Group saved.");
-                setGroupName("");
-              }}
+              onClick={handleCreateGroup}
             >
               Save Group
             </button>
@@ -174,14 +209,7 @@ export default function AccountsPage() {
             <button
               className="pill primary"
               type="button"
-              onClick={() => {
-                setIsAccountOpen(false);
-                showToast(
-                  "Account saved",
-                  accountName ? `Added ${accountName}.` : "Account saved.",
-                );
-                setAccountName("");
-              }}
+              onClick={handleCreateAccount}
             >
               Save Account
             </button>

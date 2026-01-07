@@ -4,8 +4,9 @@ import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import Modal from "../components/Modal";
 import { useCurrency } from "../components/CurrencyContext";
 import { useSelection } from "../components/SelectionContext";
-import { get } from "../utils/apiClient";
+import { get, post } from "../utils/apiClient";
 import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
+import { getDefaultRange, parseDateInput, toDateInputValue, toIsoDateTime } from "../utils/date";
 
 type Account = {
   id: string;
@@ -46,15 +47,12 @@ export default function TransactionsPage() {
   const { currency: displayCurrency } = useCurrency();
   const { account: selectedAccount, group: selectedGroup } = useSelection();
   const [toast, setToast] = useState<ActionToastData | null>(null);
-  const [range, setRange] = useState<DateRange>({
-    from: "2026-03-01",
-    to: "2026-04-30",
-  });
+  const [range, setRange] = useState<DateRange>(() => getDefaultRange(30));
   const [isTransactionOpen, setIsTransactionOpen] = useState(false);
   const [transactionAccount, setTransactionAccount] = useState("");
   const [transactionType, setTransactionType] = useState("Income");
   const [transactionAmount, setTransactionAmount] = useState("");
-  const [transactionDate, setTransactionDate] = useState("2026-04-20");
+  const [transactionDate, setTransactionDate] = useState(() => toDateInputValue(new Date()));
   const [transactionCurrency, setTransactionCurrency] = useState("USD");
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
@@ -79,7 +77,7 @@ export default function TransactionsPage() {
         const accountMap = new Map(accountsResponse.map((item) => [item.id, item.name]));
         setAccounts(accountsResponse);
         setRecurringTransactions(recurringResponse);
-        setTransactionAccount(accountsResponse[0]?.name ?? "");
+        setTransactionAccount(accountsResponse[0]?.id ?? "");
         setTransactions(
           transactionsResponse.map((transaction) => ({
             date: transaction.occurred_at.split("T")[0],
@@ -107,13 +105,13 @@ export default function TransactionsPage() {
   }, []);
 
   const accountOptions = useMemo(
-    () => accounts.map((account) => account.name),
+    () => accounts.map((account) => ({ id: account.id, name: account.name })),
     [accounts],
   );
 
   const accountGroups: Record<string, string> = useMemo(() => {
     return accountOptions.reduce<Record<string, string>>((acc, accountName) => {
-      acc[accountName] = "Ungrouped";
+      acc[accountName.name] = "Ungrouped";
       return acc;
     }, {});
   }, [accountOptions]);
@@ -121,10 +119,55 @@ export default function TransactionsPage() {
   const matchesSelection = (account: string) =>
     (selectedAccount === "All Accounts" || selectedAccount === account) &&
     (selectedGroup === "All Groups" || accountGroups[account] === selectedGroup);
-  const filteredTransactions = transactions.filter((row) => matchesSelection(row.account));
+  const filteredTransactions = transactions.filter((row) => {
+    if (!matchesSelection(row.account)) {
+      return false;
+    }
+    const rowDate = parseDateInput(row.date);
+    return rowDate >= parseDateInput(range.from) && rowDate <= parseDateInput(range.to);
+  });
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
+  };
+
+  const handleSaveTransaction = async () => {
+    const amount = Number(transactionAmount);
+    if (!amount) {
+      showToast("Missing amount", "Enter a transaction amount to save.");
+      return;
+    }
+    if (!transactionAccount) {
+      showToast("Missing account", "Select an account to save this transaction.");
+      return;
+    }
+    const accountName = accounts.find((account) => account.id === transactionAccount)?.name ?? "Unknown";
+    try {
+      const created = await post<Transaction>("/api/transactions", {
+        account_id: transactionAccount,
+        amount,
+        currency_code: transactionCurrency,
+        transaction_type: transactionType.toLowerCase(),
+        description: null,
+        occurred_at: toIsoDateTime(transactionDate),
+      });
+      setTransactions((prev) => [
+        {
+          date: created.occurred_at.split("T")[0],
+          account: accountName,
+          type: created.transaction_type === "income" ? "Income" : "Expense",
+          amount: created.amount,
+          currency: created.currency_code,
+          status: "Cleared",
+        },
+        ...prev,
+      ]);
+      setIsTransactionOpen(false);
+      setTransactionAmount("");
+      showToast("Transaction saved", "Your entry has been recorded.");
+    } catch (err) {
+      showToast("Save failed", "Unable to save this transaction.");
+    }
   };
 
   if (isLoading) {
@@ -179,27 +222,7 @@ export default function TransactionsPage() {
             <button
               className="pill primary"
               type="button"
-              onClick={() => {
-                const amount = Number(transactionAmount);
-                if (!amount) {
-                  showToast("Missing amount", "Enter a transaction amount to save.");
-                  return;
-                }
-                setTransactions((prev) => [
-                  {
-                    date: transactionDate,
-                    account: transactionAccount,
-                    type: transactionType,
-                    amount,
-                    currency: transactionCurrency,
-                    status: "Cleared",
-                  },
-                  ...prev,
-                ]);
-                setIsTransactionOpen(false);
-                setTransactionAmount("");
-                showToast("Transaction saved", "Your entry has been recorded.");
-              }}
+              onClick={handleSaveTransaction}
             >
               Save Transaction
             </button>
@@ -213,11 +236,17 @@ export default function TransactionsPage() {
               value={transactionAccount}
               onChange={(event) => setTransactionAccount(event.target.value)}
             >
-              {accountOptions.map((account) => (
-                <option key={account} value={account}>
-                  {account}
+              {accountOptions.length === 0 ? (
+                <option value="" disabled>
+                  No accounts available
                 </option>
-              ))}
+              ) : (
+                accountOptions.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))
+              )}
             </select>
           </label>
           <label>

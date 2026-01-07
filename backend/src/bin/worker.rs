@@ -2,6 +2,9 @@ use sqlx::postgres::PgPoolOptions;
 use std::time::Duration;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+#[path = "../migrations.rs"]
+mod migrations;
+
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
@@ -22,8 +25,7 @@ async fn main() {
         .execute(&pool)
         .await
         .expect("database not reachable");
-    sqlx::migrate!("./migrations")
-        .run(&pool)
+    migrations::run_with_repair(&pool)
         .await
         .expect("failed to run migrations");
 

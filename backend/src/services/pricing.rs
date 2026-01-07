@@ -1,7 +1,8 @@
-use reqwest::{Client, Url};
+use reqwest::{header, Client, Url};
 use serde::Deserialize;
 use sqlx::{postgres::PgPool, QueryBuilder, Row};
 use std::collections::HashMap;
+use std::io::{Error as IoError, ErrorKind};
 use uuid::Uuid;
 
 #[derive(Deserialize)]
@@ -66,8 +67,24 @@ pub async fn refresh_asset_prices(
             "https://query1.finance.yahoo.com/v7/finance/quote",
             &[("symbols", symbols)],
         )?;
-        let response = client.get(url).send().await?;
-        let payload: QuoteResponse = response.json().await?;
+        let response = client
+            .get(url)
+            .header(header::USER_AGENT, "firecash-api")
+            .send()
+            .await?;
+        if !response.status().is_success() {
+            return Err(Box::new(IoError::new(
+                ErrorKind::Other,
+                format!("quote request failed: {}", response.status()),
+            )));
+        }
+        let body = response.text().await?;
+        let payload: QuoteResponse = serde_json::from_str(&body).map_err(|err| {
+            IoError::new(
+                ErrorKind::Other,
+                format!("failed to decode quote response: {err}. body: {body}"),
+            )
+        })?;
         for quote in payload.quote_response.result {
             let Some(price) = quote.regular_market_price else {
                 continue;

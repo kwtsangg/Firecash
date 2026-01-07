@@ -1,6 +1,7 @@
 mod auth;
 mod models;
 mod routes;
+mod services;
 mod state;
 
 use axum::{routing::get, routing::post, routing::put, Router};
@@ -82,6 +83,9 @@ async fn main() {
                 .delete(routes::recurring_transactions::delete_recurring_transaction),
         )
         .route("/api/assets", get(routes::assets::list_assets).post(routes::assets::create_asset))
+        .route("/api/assets/prices", get(routes::assets::list_asset_prices))
+        .route("/api/assets/price-status", get(routes::assets::asset_price_status))
+        .route("/api/assets/refresh-prices", post(routes::assets::refresh_prices))
         .route(
             "/api/assets/{id}",
             put(routes::assets::update_asset).delete(routes::assets::delete_asset),

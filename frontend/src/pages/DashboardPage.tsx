@@ -397,8 +397,8 @@ export default function DashboardPage() {
         <div className="chart-surface chart-axis-surface">
           <LineChart points={linePoints} />
           <div className="chart-axis-y">
-            {axisYLabels.map((label) => (
-              <span key={label}>{label}</span>
+            {axisYLabels.map((label, index) => (
+              <span key={`${label}-${index}`}>{label}</span>
             ))}
           </div>
           <div className="chart-axis-x">

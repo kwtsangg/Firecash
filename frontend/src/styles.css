@@ -254,7 +254,7 @@ textarea:focus-visible,
   position: relative;
   align-items: stretch;
   justify-content: stretch;
-  padding: 16px 16px 32px 56px;
+  padding: 16px 16px 44px 56px;
 }
 
 .chart-axis-title {
@@ -274,7 +274,7 @@ textarea:focus-visible,
 }
 
 .chart-axis-title.x {
-  bottom: 4px;
+  bottom: 2px;
   left: 50%;
   transform: translateX(-50%);
 }
@@ -296,7 +296,7 @@ textarea:focus-visible,
   position: absolute;
   left: 56px;
   right: 16px;
-  bottom: 10px;
+  bottom: 18px;
   display: flex;
   justify-content: space-between;
   font-size: 12px;
@@ -670,6 +670,29 @@ textarea:focus-visible,
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.cell-stack {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.holdings-table .list-row {
+  align-items: start;
+}
+
+.holdings-table input,
+.holdings-table select {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.holdings-table .cell-inline input {
+  width: 120px;
+}
+
+.holdings-table .cell-stack select {
+  width: 100%;
 }
 
 .select-pill {

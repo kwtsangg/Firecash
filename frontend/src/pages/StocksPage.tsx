@@ -1222,7 +1222,7 @@ export default function StocksPage() {
           )}
         </div>
       </div>
-      <div className="card list-card">
+      <div className="card list-card holdings-table">
         <div className="list-actions">
           <button
             className="pill"
@@ -1362,7 +1362,7 @@ export default function StocksPage() {
                     ? "—"
                     : `${row.change > 0 ? "+" : ""}${row.change.toFixed(1)}%`}
                 </span>
-                <span className="cell-inline">
+                <span className="cell-inline cell-stack">
                   {isEditMode ? (
                     <>
                       <select

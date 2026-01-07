@@ -15,7 +15,7 @@ Firecash is a self-hosted asset tracker that combines a Rust API, a modern React
 # from repo root
 cp .env.example .env
 
-docker compose up --build
+docker-compose up --build
 ```
 
 Services will be available at:

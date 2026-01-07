@@ -47,6 +47,17 @@ type HistoryPoint = {
   value: number;
 };
 
+type TotalsResponse = {
+  total: number;
+  currency_code: string;
+  totals_by_currency: { currency_code: string; total: number }[];
+};
+
+type AssetPriceStatus = {
+  missing_count: number;
+  total_count: number;
+};
+
 type AssetDisplay = {
   name: string;
   amount: number;
@@ -89,6 +100,8 @@ export default function DashboardPage() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [transactions, setTransactions] = useState<TransactionDisplay[]>([]);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
+  const [totals, setTotals] = useState<TotalsResponse | null>(null);
+  const [priceStatus, setPriceStatus] = useState<AssetPriceStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -100,13 +113,21 @@ export default function DashboardPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const [accountsResponse, assetsResponse, transactionsResponse, historyResponse] =
-          await Promise.all([
-            get<Account[]>("/api/accounts"),
-            get<Asset[]>("/api/assets"),
-            get<Transaction[]>("/api/transactions"),
-            get<HistoryPoint[]>("/api/history"),
-          ]);
+        const [
+          accountsResponse,
+          assetsResponse,
+          transactionsResponse,
+          historyResponse,
+          totalsResponse,
+          priceStatusResponse,
+        ] = await Promise.all([
+          get<Account[]>("/api/accounts"),
+          get<Asset[]>("/api/assets"),
+          get<Transaction[]>("/api/transactions"),
+          get<HistoryPoint[]>("/api/history"),
+          get<TotalsResponse>("/api/totals"),
+          get<AssetPriceStatus>("/api/assets/price-status"),
+        ]);
         if (!isMounted) {
           return;
         }
@@ -125,6 +146,8 @@ export default function DashboardPage() {
         setAssets(assetsResponse);
         setTransactions(mappedTransactions);
         setHistory(historyResponse);
+        setTotals(totalsResponse);
+        setPriceStatus(priceStatusResponse);
         setTransactionAccount(accountsResponse[0]?.id ?? "");
       } catch (err) {
         if (isMounted) {
@@ -182,6 +205,18 @@ export default function DashboardPage() {
 
   const selectionScale = Math.max(0.4, filteredAssets.length / baseAssets.length || 1);
 
+  const totalAssets = totals
+    ? convertAmount(totals.total, totals.currency_code, displayCurrency)
+    : filteredAssets.reduce(
+        (sum, asset) => sum + convertAmount(asset.amount, asset.currency, displayCurrency),
+        0,
+      );
+
+  const netIncome = filteredTransactions.reduce((sum, transaction) => {
+    const signedAmount = transaction.type === "Expense" ? -transaction.amount : transaction.amount;
+    return sum + convertAmount(signedAmount, transaction.currency, displayCurrency);
+  }, 0);
+
   const lineSeries = useMemo(() => {
     const fromDate = new Date(range.from);
     const toDate = new Date(range.to);
@@ -190,11 +225,21 @@ export default function DashboardPage() {
       return date >= fromDate && date <= toDate;
     });
     const series = filtered.length > 0 ? filtered : history;
-    return series.map((point) => ({
-      date: point.date,
-      value: Math.round(point.value * (1 + refreshTick * 0.01) * selectionScale),
-    }));
-  }, [history, range.from, range.to, refreshTick, selectionScale]);
+    if (series.length === 0) {
+      return [];
+    }
+    const netChange = series.reduce((sum, point) => sum + point.value, 0);
+    const scaledTotalAssets = totalAssets * selectionScale;
+    const baseline = scaledTotalAssets - netChange;
+    let running = 0;
+    return series.map((point) => {
+      running += point.value;
+      return {
+        date: point.date,
+        value: Math.round((baseline + running) * (1 + refreshTick * 0.01)),
+      };
+    });
+  }, [history, range.from, range.to, refreshTick, selectionScale, totalAssets]);
 
   const barValues = useMemo(() => {
     const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -238,6 +283,21 @@ export default function DashboardPage() {
     setToast({ title, description });
   };
 
+  const handleRefreshPrices = async () => {
+    try {
+      await post<{ updated: number }>("/api/assets/refresh-prices", {});
+      const [totalsResponse, priceStatusResponse] = await Promise.all([
+        get<TotalsResponse>("/api/totals"),
+        get<AssetPriceStatus>("/api/assets/price-status"),
+      ]);
+      setTotals(totalsResponse);
+      setPriceStatus(priceStatusResponse);
+      showToast("Price refresh complete", "Latest prices are now available.");
+    } catch (err) {
+      showToast("Price refresh failed", "Unable to sync the latest prices.");
+    }
+  };
+
   const handleSaveTransaction = async () => {
     const amount = Number(transactionAmount);
     if (!amount) {
@@ -278,16 +338,6 @@ export default function DashboardPage() {
       showToast("Save failed", "Unable to save this transaction.");
     }
   };
-
-  const totalAssets = filteredAssets.reduce(
-    (sum, asset) => sum + convertAmount(asset.amount, asset.currency, displayCurrency),
-    0,
-  );
-
-  const netIncome = filteredTransactions.reduce((sum, transaction) => {
-    const signedAmount = transaction.type === "Expense" ? -transaction.amount : transaction.amount;
-    return sum + convertAmount(signedAmount, transaction.currency, displayCurrency);
-  }, 0);
 
   const linePoints = lineSeries.map((point) => point.value);
   const maxValue = linePoints.length > 0 ? Math.max(...linePoints) : 0;
@@ -360,7 +410,7 @@ export default function DashboardPage() {
             className="pill"
             onClick={() => {
               setRefreshTick((prev) => prev + 1);
-              showToast("Price refresh queued", "Fetching latest quotes.");
+              handleRefreshPrices();
             }}
           >
             Refresh Prices
@@ -536,7 +586,11 @@ export default function DashboardPage() {
           label="Total Assets"
           value={formatCurrency(totalAssets, displayCurrency)}
           trend={assetTrend}
-          footnote="vs last period"
+          footnote={
+            priceStatus?.missing_count
+              ? `Missing prices for ${priceStatus.missing_count} holdings`
+              : "vs last period"
+          }
         />
         <KpiCard
           label="Net Income"

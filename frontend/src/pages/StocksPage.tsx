@@ -6,7 +6,7 @@ import KpiCard from "../components/KpiCard";
 import Modal from "../components/Modal";
 import { useCurrency } from "../components/CurrencyContext";
 import { useSelection } from "../components/SelectionContext";
-import { get } from "../utils/apiClient";
+import { get, post } from "../utils/apiClient";
 import { convertAmount, formatCurrency } from "../utils/currency";
 import { formatDateDisplay } from "../utils/date";
 
@@ -27,6 +27,13 @@ type Asset = {
 type HistoryPoint = {
   date: string;
   value: number;
+};
+
+type AssetPrice = {
+  asset_id: string;
+  price: number | null;
+  currency_code: string;
+  recorded_at: string | null;
 };
 
 type Holding = {
@@ -79,26 +86,34 @@ export default function StocksPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const [accountsResponse, assetsResponse, historyResponse] = await Promise.all([
-          get<Account[]>("/api/accounts"),
-          get<Asset[]>("/api/assets"),
-          get<HistoryPoint[]>("/api/history"),
-        ]);
+        const [accountsResponse, assetsResponse, historyResponse, pricesResponse] =
+          await Promise.all([
+            get<Account[]>("/api/accounts"),
+            get<Asset[]>("/api/assets"),
+            get<HistoryPoint[]>("/api/history"),
+            get<AssetPrice[]>("/api/assets/prices"),
+          ]);
         if (!isMounted) {
           return;
         }
         const accountMap = new Map(accountsResponse.map((item) => [item.id, item.name]));
-        const mappedHoldings = assetsResponse.map((asset) => ({
-          id: asset.id,
-          ticker: asset.symbol,
-          shares: asset.quantity,
-          avgEntry: null,
-          price: null,
-          change: 0,
-          currency: asset.currency_code,
-          account: accountMap.get(asset.account_id) ?? "Unknown",
-          entryDate: "-",
-        }));
+        const priceMap = new Map(
+          pricesResponse.map((price) => [price.asset_id, price]),
+        );
+        const mappedHoldings = assetsResponse.map((asset) => {
+          const priceInfo = priceMap.get(asset.id);
+          return {
+            id: asset.id,
+            ticker: asset.symbol,
+            shares: asset.quantity,
+            avgEntry: null,
+            price: priceInfo?.price ?? null,
+            change: 0,
+            currency: priceInfo?.currency_code ?? asset.currency_code,
+            account: accountMap.get(asset.account_id) ?? "Unknown",
+            entryDate: "-",
+          };
+        });
         setAccounts(accountsResponse);
         setHoldings(mappedHoldings);
         setHistory(historyResponse);
@@ -127,6 +142,35 @@ export default function StocksPage() {
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
+  };
+
+  const applyPriceUpdates = (prices: AssetPrice[]) => {
+    const priceMap = new Map(prices.map((price) => [price.asset_id, price]));
+    setHoldings((prev) =>
+      prev.map((holding) => {
+        const priceInfo = priceMap.get(holding.id);
+        if (!priceInfo) {
+          return holding;
+        }
+        return {
+          ...holding,
+          price: priceInfo.price ?? holding.price,
+          currency: priceInfo.currency_code ?? holding.currency,
+        };
+      }),
+    );
+  };
+
+  const handleSyncQuotes = async () => {
+    try {
+      showToast("Quotes syncing", "Refreshing stock prices.");
+      await post<{ updated: number }>("/api/assets/refresh-prices", {});
+      const pricesResponse = await get<AssetPrice[]>("/api/assets/prices");
+      applyPriceUpdates(pricesResponse);
+      showToast("Quotes updated", "Latest stock prices are in.");
+    } catch (err) {
+      showToast("Quote sync failed", "Unable to refresh stock prices.");
+    }
   };
 
   const performanceSeries = useMemo(() => {
@@ -279,9 +323,7 @@ export default function StocksPage() {
           </button>
           <button
             className="pill"
-            onClick={() => {
-              showToast("Quotes syncing", "Refreshing stock prices.");
-            }}
+            onClick={handleSyncQuotes}
           >
             Sync Quotes
           </button>

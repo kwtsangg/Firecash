@@ -2,6 +2,8 @@ use sqlx::postgres::PgPoolOptions;
 use std::time::Duration;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+use firecash_api::services::pricing::refresh_asset_prices;
+
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
@@ -37,7 +39,7 @@ async fn main() {
         if let Err(error) = refresh_fx_rates(&pool).await {
             tracing::error!(?error, "failed to refresh FX rates");
         }
-        if let Err(error) = refresh_prices(&pool).await {
+        if let Err(error) = refresh_asset_prices(&pool, None).await {
             tracing::error!(?error, "failed to refresh prices");
         }
     }
@@ -80,21 +82,6 @@ async fn refresh_recurring_transactions(pool: &sqlx::PgPool) -> Result<(), sqlx:
         SET next_occurs_at = rt.next_occurs_at + make_interval(days => rt.interval_days)
         FROM due
         WHERE rt.id = due.id
-        "#,
-    )
-    .execute(pool)
-    .await?;
-    Ok(())
-}
-
-async fn refresh_prices(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
-    tracing::info!("refreshing asset prices");
-    sqlx::query(
-        r#"
-        INSERT INTO price_history (id, asset_id, price, currency_code, recorded_at)
-        SELECT gen_random_uuid(), id, 100.0, currency_code, NOW()
-        FROM assets
-        ON CONFLICT DO NOTHING
         "#,
     )
     .execute(pool)

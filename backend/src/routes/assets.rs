@@ -3,12 +3,14 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use chrono::{DateTime, Utc};
 use sqlx::{QueryBuilder, Row};
 use uuid::Uuid;
 
 use crate::{
     auth::AuthenticatedUser,
     models::{Asset, CreateAssetRequest, UpdateAssetRequest, UpdateAssetResponse},
+    services::pricing::refresh_asset_prices,
     state::AppState,
 };
 
@@ -21,6 +23,26 @@ pub struct AssetQueryParams {
     pub account_id: Option<Uuid>,
     pub account_group_id: Option<Uuid>,
     pub currency_code: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+pub struct AssetPriceStatus {
+    pub missing_count: i64,
+    pub total_count: i64,
+}
+
+#[derive(serde::Serialize)]
+pub struct AssetPrice {
+    pub asset_id: Uuid,
+    pub symbol: String,
+    pub price: Option<f64>,
+    pub currency_code: String,
+    pub recorded_at: Option<DateTime<Utc>>,
+}
+
+#[derive(serde::Serialize)]
+pub struct RefreshPricesResponse {
+    pub updated: usize,
 }
 
 pub async fn list_assets(
@@ -86,6 +108,121 @@ pub async fn list_assets(
         .map_err(crate::auth::internal_error)?;
 
     Ok(Json(records))
+}
+
+pub async fn list_asset_prices(
+    State(state): State<AppState>,
+    user: AuthenticatedUser,
+) -> Result<Json<Vec<AssetPrice>>, (axum::http::StatusCode, String)> {
+    let records = sqlx::query(
+        r#"
+        WITH latest_prices AS (
+            SELECT ph.asset_id,
+                   ph.price,
+                   ph.currency_code,
+                   ph.recorded_at,
+                   ROW_NUMBER() OVER (PARTITION BY ph.asset_id ORDER BY ph.recorded_at DESC) as rn
+            FROM price_history ph
+        )
+        SELECT a.id as asset_id,
+               a.symbol,
+               a.currency_code as asset_currency,
+               lp.price,
+               lp.currency_code as price_currency,
+               lp.recorded_at
+        FROM assets a
+        INNER JOIN accounts acc ON a.account_id = acc.id
+        LEFT JOIN latest_prices lp ON lp.asset_id = a.id AND lp.rn = 1
+        WHERE acc.user_id = $1
+        ORDER BY a.symbol
+        "#,
+    )
+    .bind(user.id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(crate::auth::internal_error)?;
+
+    let prices = records
+        .into_iter()
+        .map(|row| {
+            let asset_id: Uuid = row
+                .try_get("asset_id")
+                .map_err(crate::auth::internal_error)?;
+            let symbol: String = row
+                .try_get("symbol")
+                .map_err(crate::auth::internal_error)?;
+            let asset_currency: String = row
+                .try_get("asset_currency")
+                .map_err(crate::auth::internal_error)?;
+            let price: Option<f64> = row
+                .try_get("price")
+                .map_err(crate::auth::internal_error)?;
+            let price_currency: Option<String> = row
+                .try_get("price_currency")
+                .map_err(crate::auth::internal_error)?;
+            let recorded_at: Option<DateTime<Utc>> = row
+                .try_get("recorded_at")
+                .map_err(crate::auth::internal_error)?;
+            Ok(AssetPrice {
+                asset_id,
+                symbol,
+                price,
+                currency_code: price_currency.unwrap_or(asset_currency),
+                recorded_at,
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(Json(prices))
+}
+
+pub async fn asset_price_status(
+    State(state): State<AppState>,
+    user: AuthenticatedUser,
+) -> Result<Json<AssetPriceStatus>, (axum::http::StatusCode, String)> {
+    let record = sqlx::query(
+        r#"
+        WITH latest_prices AS (
+            SELECT ph.asset_id,
+                   ph.price,
+                   ROW_NUMBER() OVER (PARTITION BY ph.asset_id ORDER BY ph.recorded_at DESC) as rn
+            FROM price_history ph
+        )
+        SELECT COUNT(*) FILTER (WHERE lp.price IS NULL) as missing_count,
+               COUNT(*) as total_count
+        FROM assets a
+        INNER JOIN accounts acc ON a.account_id = acc.id
+        LEFT JOIN latest_prices lp ON lp.asset_id = a.id AND lp.rn = 1
+        WHERE acc.user_id = $1
+        "#,
+    )
+    .bind(user.id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(crate::auth::internal_error)?;
+
+    let missing_count: i64 = record
+        .try_get("missing_count")
+        .map_err(crate::auth::internal_error)?;
+    let total_count: i64 = record
+        .try_get("total_count")
+        .map_err(crate::auth::internal_error)?;
+
+    Ok(Json(AssetPriceStatus {
+        missing_count,
+        total_count,
+    }))
+}
+
+pub async fn refresh_prices(
+    State(state): State<AppState>,
+    user: AuthenticatedUser,
+) -> Result<Json<RefreshPricesResponse>, (axum::http::StatusCode, String)> {
+    let updated = refresh_asset_prices(&state.pool, Some(user.id))
+        .await
+        .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+
+    Ok(Json(RefreshPricesResponse { updated }))
 }
 
 pub async fn create_asset(

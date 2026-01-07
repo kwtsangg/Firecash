@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS accounts (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id),
+  name TEXT NOT NULL,
+  currency_code TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

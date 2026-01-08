@@ -4,15 +4,24 @@ use serde_json::Value;
 use sqlx::Row;
 use std::collections::HashMap;
 
-use crate::{auth::AuthenticatedUser, state::AppState};
+use chrono::Duration;
+use crate::{audit::record_audit_event, auth::AuthenticatedUser, state::AppState};
 
-const PREFERENCE_KEYS: [&str; 3] = ["categories", "strategies", "holding_strategies"];
+const PREFERENCE_KEYS: [&str; 5] = [
+    "categories",
+    "strategies",
+    "holding_strategies",
+    "retention_days",
+    "export_redaction",
+];
 
 #[derive(Serialize)]
 pub struct PreferencesResponse {
     pub categories: Vec<String>,
     pub strategies: Vec<String>,
     pub holding_strategies: HashMap<String, String>,
+    pub retention_days: Option<i64>,
+    pub export_redaction: String,
 }
 
 #[derive(Deserialize)]
@@ -20,6 +29,8 @@ pub struct PreferencesUpdate {
     pub categories: Option<Vec<String>>,
     pub strategies: Option<Vec<String>>,
     pub holding_strategies: Option<HashMap<String, String>>,
+    pub retention_days: Option<i64>,
+    pub export_redaction: Option<String>,
 }
 
 pub async fn list_preferences(
@@ -43,6 +54,8 @@ pub async fn list_preferences(
     let mut categories: Vec<String> = Vec::new();
     let mut strategies: Vec<String> = Vec::new();
     let mut holding_strategies: HashMap<String, String> = HashMap::new();
+    let mut retention_days: Option<i64> = None;
+    let mut export_redaction = "none".to_string();
 
     for row in rows {
         let key: String = row.try_get("key").map_err(crate::auth::internal_error)?;
@@ -63,6 +76,16 @@ pub async fn list_preferences(
                     holding_strategies = parsed;
                 }
             }
+            "retention_days" => {
+                if let Ok(parsed) = serde_json::from_value::<i64>(value) {
+                    retention_days = Some(parsed);
+                }
+            }
+            "export_redaction" => {
+                if let Ok(parsed) = serde_json::from_value::<String>(value) {
+                    export_redaction = parsed;
+                }
+            }
             _ => {}
         }
     }
@@ -71,6 +94,8 @@ pub async fn list_preferences(
         categories,
         strategies,
         holding_strategies,
+        retention_days,
+        export_redaction,
     }))
 }
 
@@ -92,6 +117,24 @@ pub async fn update_preferences(
             serde_json::to_value(holding_strategies).unwrap_or(Value::Null),
         ));
     }
+    if let Some(retention_days) = payload.retention_days {
+        let value = if retention_days > 0 {
+            serde_json::to_value(retention_days).unwrap_or(Value::Null)
+        } else {
+            Value::Null
+        };
+        updates.push(("retention_days", value));
+    }
+    if let Some(export_redaction) = payload.export_redaction {
+        let normalized = export_redaction.trim().to_lowercase();
+        if !matches!(normalized.as_str(), "none" | "pii") {
+            return Err((StatusCode::BAD_REQUEST, "Invalid export redaction".into()));
+        }
+        updates.push((
+            "export_redaction",
+            serde_json::to_value(normalized).unwrap_or(Value::Null),
+        ));
+    }
 
     for (key, value) in updates {
         sqlx::query(
@@ -108,6 +151,34 @@ pub async fn update_preferences(
         .execute(&state.pool)
         .await
         .map_err(crate::auth::internal_error)?;
+    }
+
+    if let Some(retention_days) = payload.retention_days {
+        if retention_days > 0 {
+            let cutoff = chrono::Utc::now() - Duration::days(retention_days);
+            let deleted = sqlx::query(
+                r#"
+                DELETE FROM transactions
+                USING accounts
+                WHERE transactions.account_id = accounts.id
+                  AND accounts.user_id = $1
+                  AND transactions.occurred_at < $2
+                "#,
+            )
+            .bind(user.id)
+            .bind(cutoff)
+            .execute(&state.pool)
+            .await
+            .map_err(crate::auth::internal_error)?;
+
+            let _ = record_audit_event(
+                &state.pool,
+                Some(user.id),
+                "retention.applied",
+                serde_json::json!({ "retention_days": retention_days, "deleted": deleted.rows_affected() }),
+            )
+            .await;
+        }
     }
 
     list_preferences(State(state), user).await

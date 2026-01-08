@@ -8,6 +8,7 @@ use sqlx::{QueryBuilder, Row};
 use uuid::Uuid;
 
 use crate::{
+    audit::record_audit_event,
     auth::AuthenticatedUser,
     models::{Asset, CreateAssetRequest, UpdateAssetRequest, UpdateAssetResponse},
     services::pricing::{fetch_stooq_candles, refresh_asset_prices, Candle},
@@ -65,13 +66,32 @@ pub async fn list_assets(
     let offset = params.offset.unwrap_or(0).max(0);
     let mut query = QueryBuilder::new(
         r#"
-        SELECT a.id, a.account_id, a.symbol, a.asset_type, a.quantity, a.currency_code, a.created_at
-        FROM assets a
-        INNER JOIN accounts acc ON a.account_id = acc.id
-        WHERE acc.user_id =
+        WITH accessible_accounts AS (
+            SELECT id
+            FROM accounts
+            WHERE user_id =
         "#,
     );
     query.push_bind(user.id);
+    query.push(
+        r#"
+            UNION
+            SELECT agm.account_id
+            FROM account_group_members agm
+            INNER JOIN account_group_users agu ON agm.group_id = agu.group_id
+            WHERE agu.user_id =
+        "#,
+    );
+    query.push_bind(user.id);
+    query.push(
+        r#"
+        )
+        SELECT a.id, a.account_id, a.symbol, a.asset_type, a.quantity, a.currency_code, a.created_at
+        FROM assets a
+        INNER JOIN accounts acc ON a.account_id = acc.id
+        WHERE a.account_id IN (SELECT id FROM accessible_accounts)
+        "#,
+    );
 
     if let Some(account_id) = params.account_id {
         query.push(" AND a.account_id = ");
@@ -127,7 +147,17 @@ pub async fn list_asset_prices(
 ) -> Result<Json<Vec<AssetPrice>>, (axum::http::StatusCode, String)> {
     let records = sqlx::query(
         r#"
-        WITH latest_prices AS (
+        WITH accessible_accounts AS (
+            SELECT id
+            FROM accounts
+            WHERE user_id = $1
+            UNION
+            SELECT agm.account_id
+            FROM account_group_members agm
+            INNER JOIN account_group_users agu ON agm.group_id = agu.group_id
+            WHERE agu.user_id = $1
+        ),
+        latest_prices AS (
             SELECT ph.asset_id,
                    ph.price,
                    ph.currency_code,
@@ -144,7 +174,7 @@ pub async fn list_asset_prices(
         FROM assets a
         INNER JOIN accounts acc ON a.account_id = acc.id
         LEFT JOIN latest_prices lp ON lp.asset_id = a.id AND lp.rn = 1
-        WHERE acc.user_id = $1
+        WHERE a.account_id IN (SELECT id FROM accessible_accounts)
         ORDER BY a.symbol
         "#,
     )
@@ -193,7 +223,17 @@ pub async fn asset_price_status(
 ) -> Result<Json<AssetPriceStatus>, (axum::http::StatusCode, String)> {
     let record = sqlx::query(
         r#"
-        WITH latest_prices AS (
+        WITH accessible_accounts AS (
+            SELECT id
+            FROM accounts
+            WHERE user_id = $1
+            UNION
+            SELECT agm.account_id
+            FROM account_group_members agm
+            INNER JOIN account_group_users agu ON agm.group_id = agu.group_id
+            WHERE agu.user_id = $1
+        ),
+        latest_prices AS (
             SELECT ph.asset_id,
                    ph.price,
                    ROW_NUMBER() OVER (PARTITION BY ph.asset_id ORDER BY ph.recorded_at DESC) as rn
@@ -204,7 +244,7 @@ pub async fn asset_price_status(
         FROM assets a
         INNER JOIN accounts acc ON a.account_id = acc.id
         LEFT JOIN latest_prices lp ON lp.asset_id = a.id AND lp.rn = 1
-        WHERE acc.user_id = $1
+        WHERE a.account_id IN (SELECT id FROM accessible_accounts)
         "#,
     )
     .bind(user.id)
@@ -229,9 +269,19 @@ pub async fn refresh_prices(
     State(state): State<AppState>,
     user: AuthenticatedUser,
 ) -> Result<Json<RefreshPricesResponse>, (axum::http::StatusCode, String)> {
-    let updated = refresh_asset_prices(&state.pool, Some(user.id))
-        .await
-        .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+    let updated = match refresh_asset_prices(&state.pool, Some(user.id)).await {
+        Ok(updated) => updated,
+        Err(err) => {
+            let _ = record_audit_event(
+                &state.pool,
+                Some(user.id),
+                "worker.error",
+                serde_json::json!({ "worker": "asset_pricing", "error": err.to_string() }),
+            )
+            .await;
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, err.to_string()));
+        }
+    };
 
     Ok(Json(RefreshPricesResponse { updated }))
 }
@@ -255,22 +305,7 @@ pub async fn create_asset(
     Json(payload): Json<CreateAssetRequest>,
 ) -> Result<Json<Asset>, (axum::http::StatusCode, String)> {
     let symbol = payload.symbol.trim().to_uppercase();
-    let owner = sqlx::query(
-        r#"
-        SELECT user_id
-        FROM accounts
-        WHERE id = $1
-        "#,
-    )
-    .bind(payload.account_id)
-    .fetch_one(&state.pool)
-    .await
-    .map_err(crate::auth::internal_error)?;
-
-    let owner_id: Uuid = owner.try_get("user_id").map_err(crate::auth::internal_error)?;
-    if owner_id != user.id {
-        return Err((axum::http::StatusCode::FORBIDDEN, "Forbidden".into()));
-    }
+    ensure_account_edit_access(&state, user.id, payload.account_id).await?;
 
     let id = Uuid::new_v4();
     let record = sqlx::query_as::<_, Asset>(
@@ -301,12 +336,11 @@ pub async fn update_asset(
     Path(asset_id): Path<Uuid>,
     Json(payload): Json<UpdateAssetRequest>,
 ) -> Result<Json<UpdateAssetResponse>, (axum::http::StatusCode, String)> {
-    let owner_id: Option<Uuid> = sqlx::query_scalar(
+    let account_id: Option<Uuid> = sqlx::query_scalar(
         r#"
-        SELECT acc.user_id
-        FROM assets a
-        INNER JOIN accounts acc ON a.account_id = acc.id
-        WHERE a.id = $1
+        SELECT account_id
+        FROM assets
+        WHERE id = $1
         "#,
     )
     .bind(asset_id)
@@ -314,30 +348,14 @@ pub async fn update_asset(
     .await
     .map_err(crate::auth::internal_error)?;
 
-    let Some(owner_id) = owner_id else {
+    let Some(account_id) = account_id else {
         return Err((StatusCode::NOT_FOUND, "Asset not found".into()));
     };
 
-    if owner_id != user.id {
-        return Err((StatusCode::FORBIDDEN, "Forbidden".into()));
-    }
+    ensure_account_edit_access(&state, user.id, account_id).await?;
 
     if let Some(account_id) = payload.account_id {
-        let account_owner: Option<Uuid> = sqlx::query_scalar(
-            r#"
-            SELECT user_id
-            FROM accounts
-            WHERE id = $1
-            "#,
-        )
-        .bind(account_id)
-        .fetch_optional(&state.pool)
-        .await
-        .map_err(crate::auth::internal_error)?;
-
-        if account_owner != Some(user.id) {
-            return Err((StatusCode::FORBIDDEN, "Forbidden".into()));
-        }
+        ensure_account_edit_access(&state, user.id, account_id).await?;
     }
 
     let normalized_symbol = payload
@@ -374,17 +392,32 @@ pub async fn delete_asset(
     user: AuthenticatedUser,
     Path(asset_id): Path<Uuid>,
 ) -> Result<StatusCode, (axum::http::StatusCode, String)> {
-    let result = sqlx::query(
+    let account_id: Option<Uuid> = sqlx::query_scalar(
         r#"
-        DELETE FROM assets a
-        USING accounts acc
-        WHERE a.account_id = acc.id
-          AND acc.user_id = $1
-          AND a.id = $2
+        SELECT account_id
+        FROM assets
+        WHERE id = $1
         "#,
     )
-    .bind(user.id)
     .bind(asset_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(crate::auth::internal_error)?;
+
+    let Some(account_id) = account_id else {
+        return Err((StatusCode::NOT_FOUND, "Asset not found".into()));
+    };
+
+    ensure_account_edit_access(&state, user.id, account_id).await?;
+
+    let result = sqlx::query(
+        r#"
+        DELETE FROM assets
+        WHERE id = $1 AND account_id = $2
+        "#,
+    )
+    .bind(asset_id)
+    .bind(account_id)
     .execute(&state.pool)
     .await
     .map_err(crate::auth::internal_error)?;
@@ -394,4 +427,44 @@ pub async fn delete_asset(
     }
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn ensure_account_edit_access(
+    state: &AppState,
+    user_id: Uuid,
+    account_id: Uuid,
+) -> Result<(), (StatusCode, String)> {
+    let record = sqlx::query(
+        r#"
+        SELECT a.user_id,
+               MAX(CASE WHEN agu.role IN ('edit', 'admin') THEN 1 ELSE 0 END) as can_edit
+        FROM accounts a
+        LEFT JOIN account_group_members agm ON a.id = agm.account_id
+        LEFT JOIN account_group_users agu ON agm.group_id = agu.group_id AND agu.user_id = $1
+        WHERE a.id = $2
+        GROUP BY a.user_id
+        "#,
+    )
+    .bind(user_id)
+    .bind(account_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(crate::auth::internal_error)?;
+
+    let Some(record) = record else {
+        return Err((StatusCode::NOT_FOUND, "Account not found".into()));
+    };
+
+    let owner_id: Uuid = record
+        .try_get("user_id")
+        .map_err(crate::auth::internal_error)?;
+    let can_edit: i64 = record
+        .try_get("can_edit")
+        .map_err(crate::auth::internal_error)?;
+
+    if owner_id != user_id && can_edit == 0 {
+        return Err((StatusCode::FORBIDDEN, "Forbidden".into()));
+    }
+
+    Ok(())
 }

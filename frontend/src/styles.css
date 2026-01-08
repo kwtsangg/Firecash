@@ -68,6 +68,12 @@ textarea:focus-visible,
   gap: 12px;
 }
 
+.logo-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .nav-actions {
   display: flex;
   gap: 12px;
@@ -175,6 +181,22 @@ textarea:focus-visible,
   z-index: 900;
 }
 
+.offline-banner {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 32px;
+  background: rgba(255, 193, 7, 0.12);
+  border-bottom: 1px solid rgba(255, 193, 7, 0.2);
+  color: #ffd36a;
+  font-size: 14px;
+}
+
+.offline-banner span {
+  color: var(--text-muted);
+}
+
 .page {
   display: flex;
   flex-direction: column;
@@ -186,6 +208,73 @@ textarea:focus-visible,
   justify-content: space-between;
   align-items: center;
   gap: 16px;
+}
+
+@media (max-width: 1024px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 1fr;
+  }
+
+  .sidebar {
+    position: fixed;
+    z-index: 800;
+    left: 0;
+    width: 220px;
+    background: rgba(16, 18, 29, 0.98);
+    transform: translateX(0);
+    box-shadow: 12px 0 30px rgba(0, 0, 0, 0.4);
+  }
+
+  .app-shell.sidebar-collapsed .sidebar {
+    display: none;
+  }
+
+  .top-nav {
+    padding: 12px 20px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .nav-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .content {
+    padding: 24px;
+  }
+}
+
+@media (max-width: 720px) {
+  .content {
+    padding: 16px;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .toolbar {
+    width: 100%;
+  }
+
+  .nav-actions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .split-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .offline-banner {
+    padding: 12px 16px;
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 
 .toolbar {
@@ -754,6 +843,14 @@ textarea:focus-visible,
   font-weight: 600;
 }
 
+.table.compact .table-row {
+  font-size: 12px;
+}
+
+.columns-3 {
+  grid-template-columns: 2fr 1fr 1fr;
+}
+
 .columns-4 {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -814,6 +911,27 @@ textarea:focus-visible,
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.modal-footer-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.file-upload {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-upload input {
+  display: none;
+}
+
+.muted.small {
+  font-size: 12px;
 }
 
 .empty-state-note {

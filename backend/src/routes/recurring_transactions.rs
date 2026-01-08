@@ -30,11 +30,21 @@ pub async fn list_recurring_transactions(
     let offset = params.offset.unwrap_or(0).max(0);
     let records = sqlx::query_as::<_, RecurringTransaction>(
         r#"
+        WITH accessible_accounts AS (
+            SELECT id
+            FROM accounts
+            WHERE user_id = $1
+            UNION
+            SELECT agm.account_id
+            FROM account_group_members agm
+            INNER JOIN account_group_users agu ON agm.group_id = agu.group_id
+            WHERE agu.user_id = $1
+        )
         SELECT rt.id, rt.account_id, rt.amount, rt.currency_code, rt.transaction_type,
                rt.description, rt.interval_days, rt.next_occurs_at, rt.is_enabled
         FROM recurring_transactions rt
         INNER JOIN accounts a ON rt.account_id = a.id
-        WHERE a.user_id = $1
+        WHERE rt.account_id IN (SELECT id FROM accessible_accounts)
         ORDER BY rt.next_occurs_at
         LIMIT $2 OFFSET $3
         "#,
@@ -54,25 +64,7 @@ pub async fn create_recurring_transaction(
     user: AuthenticatedUser,
     Json(payload): Json<CreateRecurringTransactionRequest>,
 ) -> Result<Json<RecurringTransaction>, (axum::http::StatusCode, String)> {
-    let account_owner = sqlx::query(
-        r#"
-        SELECT user_id
-        FROM accounts
-        WHERE id = $1
-        "#,
-    )
-    .bind(payload.account_id)
-    .fetch_one(&state.pool)
-    .await
-    .map_err(crate::auth::internal_error)?;
-
-    let owner_id: Uuid = account_owner
-        .try_get("user_id")
-        .map_err(crate::auth::internal_error)?;
-
-    if owner_id != user.id {
-        return Err((axum::http::StatusCode::FORBIDDEN, "Forbidden".into()));
-    }
+    ensure_account_edit_access(&state, user.id, payload.account_id).await?;
 
     let id = Uuid::new_v4();
     let is_enabled = payload.is_enabled.unwrap_or(true);
@@ -109,12 +101,11 @@ pub async fn update_recurring_transaction(
     Path(recurring_id): Path<Uuid>,
     Json(payload): Json<UpdateRecurringTransactionRequest>,
 ) -> Result<Json<UpdateRecurringTransactionResponse>, (axum::http::StatusCode, String)> {
-    let owner_id: Option<Uuid> = sqlx::query_scalar(
+    let account_id: Option<Uuid> = sqlx::query_scalar(
         r#"
-        SELECT a.user_id
-        FROM recurring_transactions rt
-        INNER JOIN accounts a ON rt.account_id = a.id
-        WHERE rt.id = $1
+        SELECT account_id
+        FROM recurring_transactions
+        WHERE id = $1
         "#,
     )
     .bind(recurring_id)
@@ -122,30 +113,14 @@ pub async fn update_recurring_transaction(
     .await
     .map_err(crate::auth::internal_error)?;
 
-    let Some(owner_id) = owner_id else {
+    let Some(account_id) = account_id else {
         return Err((StatusCode::NOT_FOUND, "Recurring transaction not found".into()));
     };
 
-    if owner_id != user.id {
-        return Err((StatusCode::FORBIDDEN, "Forbidden".into()));
-    }
+    ensure_account_edit_access(&state, user.id, account_id).await?;
 
     if let Some(account_id) = payload.account_id {
-        let account_owner: Option<Uuid> = sqlx::query_scalar(
-            r#"
-            SELECT user_id
-            FROM accounts
-            WHERE id = $1
-            "#,
-        )
-        .bind(account_id)
-        .fetch_optional(&state.pool)
-        .await
-        .map_err(crate::auth::internal_error)?;
-
-        if account_owner != Some(user.id) {
-            return Err((StatusCode::FORBIDDEN, "Forbidden".into()));
-        }
+        ensure_account_edit_access(&state, user.id, account_id).await?;
     }
 
     let record = sqlx::query_as::<_, UpdateRecurringTransactionResponse>(
@@ -185,19 +160,35 @@ pub async fn skip_recurring_transaction(
     user: AuthenticatedUser,
     Path(recurring_id): Path<Uuid>,
 ) -> Result<Json<UpdateRecurringTransactionResponse>, (axum::http::StatusCode, String)> {
+    let account_id: Option<Uuid> = sqlx::query_scalar(
+        r#"
+        SELECT account_id
+        FROM recurring_transactions
+        WHERE id = $1
+        "#,
+    )
+    .bind(recurring_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(crate::auth::internal_error)?;
+
+    let Some(account_id) = account_id else {
+        return Err((StatusCode::NOT_FOUND, "Recurring transaction not found".into()));
+    };
+
+    ensure_account_edit_access(&state, user.id, account_id).await?;
+
     let record = sqlx::query_as::<_, UpdateRecurringTransactionResponse>(
         r#"
         UPDATE recurring_transactions rt
         SET next_occurs_at = rt.next_occurs_at + make_interval(days => rt.interval_days)
         FROM accounts a
         WHERE rt.account_id = a.id
-          AND a.user_id = $1
-          AND rt.id = $2
+          AND rt.id = $1
         RETURNING rt.id, rt.account_id, rt.amount, rt.currency_code, rt.transaction_type,
                   rt.description, rt.interval_days, rt.next_occurs_at, rt.is_enabled
         "#,
     )
-    .bind(user.id)
     .bind(recurring_id)
     .fetch_optional(&state.pool)
     .await
@@ -215,17 +206,32 @@ pub async fn delete_recurring_transaction(
     user: AuthenticatedUser,
     Path(recurring_id): Path<Uuid>,
 ) -> Result<StatusCode, (axum::http::StatusCode, String)> {
-    let result = sqlx::query(
+    let account_id: Option<Uuid> = sqlx::query_scalar(
         r#"
-        DELETE FROM recurring_transactions rt
-        USING accounts a
-        WHERE rt.account_id = a.id
-          AND a.user_id = $1
-          AND rt.id = $2
+        SELECT account_id
+        FROM recurring_transactions
+        WHERE id = $1
         "#,
     )
-    .bind(user.id)
     .bind(recurring_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(crate::auth::internal_error)?;
+
+    let Some(account_id) = account_id else {
+        return Err((StatusCode::NOT_FOUND, "Recurring transaction not found".into()));
+    };
+
+    ensure_account_edit_access(&state, user.id, account_id).await?;
+
+    let result = sqlx::query(
+        r#"
+        DELETE FROM recurring_transactions
+        WHERE id = $1 AND account_id = $2
+        "#,
+    )
+    .bind(recurring_id)
+    .bind(account_id)
     .execute(&state.pool)
     .await
     .map_err(crate::auth::internal_error)?;
@@ -235,4 +241,44 @@ pub async fn delete_recurring_transaction(
     }
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn ensure_account_edit_access(
+    state: &AppState,
+    user_id: Uuid,
+    account_id: Uuid,
+) -> Result<(), (StatusCode, String)> {
+    let record = sqlx::query(
+        r#"
+        SELECT a.user_id,
+               MAX(CASE WHEN agu.role IN ('edit', 'admin') THEN 1 ELSE 0 END) as can_edit
+        FROM accounts a
+        LEFT JOIN account_group_members agm ON a.id = agm.account_id
+        LEFT JOIN account_group_users agu ON agm.group_id = agu.group_id AND agu.user_id = $1
+        WHERE a.id = $2
+        GROUP BY a.user_id
+        "#,
+    )
+    .bind(user_id)
+    .bind(account_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(crate::auth::internal_error)?;
+
+    let Some(record) = record else {
+        return Err((StatusCode::NOT_FOUND, "Account not found".into()));
+    };
+
+    let owner_id: Uuid = record
+        .try_get("user_id")
+        .map_err(crate::auth::internal_error)?;
+    let can_edit: i64 = record
+        .try_get("can_edit")
+        .map_err(crate::auth::internal_error)?;
+
+    if owner_id != user_id && can_edit == 0 {
+        return Err((StatusCode::FORBIDDEN, "Forbidden".into()));
+    }
+
+    Ok(())
 }

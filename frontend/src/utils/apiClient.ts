@@ -1,4 +1,5 @@
 const TOKEN_KEY = "firecash.jwt";
+const CACHE_PREFIX = "firecash.cache:";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
@@ -63,6 +64,16 @@ async function parseResponseBody(response: Response) {
   }
 }
 
+function buildCacheKey(path: string) {
+  return `${CACHE_PREFIX}${path}`;
+}
+
+function notifyOfflineCache(path: string) {
+  window.dispatchEvent(
+    new CustomEvent("firecash:offline-cache", { detail: { path, timestamp: Date.now() } }),
+  );
+}
+
 export async function apiRequest<T>(
   path: string,
   options: RequestInit = {},
@@ -80,10 +91,24 @@ export async function apiRequest<T>(
     }
   }
 
-  const response = await fetch(buildUrl(path), {
-    ...options,
-    headers,
-  });
+  const cacheKey = buildCacheKey(path);
+  const method = (options.method ?? "GET").toUpperCase();
+  let response: Response;
+  try {
+    response = await fetch(buildUrl(path), {
+      ...options,
+      headers,
+    });
+  } catch (error) {
+    if (method === "GET") {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        notifyOfflineCache(path);
+        return JSON.parse(cached) as T;
+      }
+    }
+    throw error;
+  }
 
   const data = await parseResponseBody(response);
 
@@ -96,6 +121,14 @@ export async function apiRequest<T>(
       unauthorizedHandler?.();
     }
     throw new ApiError(response.status, message, data);
+  }
+
+  if (method === "GET") {
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify(data));
+    } catch (error) {
+      // Ignore cache errors.
+    }
   }
 
   return data as T;

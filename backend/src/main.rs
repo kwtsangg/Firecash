@@ -1,16 +1,25 @@
+mod audit;
 mod auth;
 mod models;
 mod routes;
 mod services;
 mod state;
 
-use axum::{routing::get, routing::post, routing::put, Router};
+use axum::{
+    middleware::from_fn_with_state,
+    routing::get,
+    routing::post,
+    routing::put,
+    Router,
+};
+use axum::{extract::State, http::Request, middleware::Next, response::Response};
 use sqlx::postgres::PgPoolOptions;
 use std::net::SocketAddr;
+use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::state::AppState;
+use crate::{audit::record_audit_event, state::AppState};
 
 #[tokio::main]
 async fn main() {
@@ -39,7 +48,24 @@ async fn main() {
         .await
         .expect("failed to run migrations");
 
-    let state = AppState { pool, jwt_secret };
+    let admin_emails = std::env::var("ADMIN_EMAILS")
+        .unwrap_or_default()
+        .split(',')
+        .map(|email| email.trim().to_lowercase())
+        .filter(|email| !email.is_empty())
+        .collect::<Vec<_>>();
+
+    let governor_conf = GovernorConfigBuilder::default()
+        .per_second(5)
+        .burst_size(20)
+        .finish()
+        .expect("failed to build rate limit config");
+
+    let state = AppState {
+        pool,
+        jwt_secret,
+        admin_emails,
+    };
 
     let app = Router::new()
         .route("/health", get(health))
@@ -47,6 +73,18 @@ async fn main() {
         .route("/api/login", post(auth::login))
         .route("/api/demo-login", post(auth::demo_login))
         .route("/api/me", get(auth::me).put(auth::update_me))
+        .route(
+            "/api/backup/export",
+            get(routes::backup::export_backup),
+        )
+        .route(
+            "/api/backup/restore",
+            post(routes::backup::restore_backup),
+        )
+        .route(
+            "/api/admin/audit-logs",
+            get(routes::admin::list_audit_logs),
+        )
         .route("/api/accounts", get(routes::accounts::list_accounts).post(routes::accounts::create_account))
         .route(
             "/api/accounts/{id}",
@@ -65,6 +103,16 @@ async fn main() {
             "/api/account-groups/{id}",
             put(routes::account_groups::update_account_group)
                 .delete(routes::account_groups::delete_account_group),
+        )
+        .route(
+            "/api/account-groups/{id}/members",
+            get(routes::account_groups::list_account_group_users)
+                .post(routes::account_groups::create_account_group_user),
+        )
+        .route(
+            "/api/account-groups/{id}/members/{user_id}",
+            put(routes::account_groups::update_account_group_user)
+                .delete(routes::account_groups::delete_account_group_user),
         )
         .route(
             "/api/transactions",
@@ -109,6 +157,10 @@ async fn main() {
                 .put(routes::preferences::update_preferences),
         )
         .layer(CorsLayer::new().allow_origin(Any).allow_headers(Any))
+        .layer(GovernorLayer {
+            config: governor_conf,
+        })
+        .layer(from_fn_with_state(state.clone(), monitoring_middleware))
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
@@ -118,7 +170,7 @@ async fn main() {
         tokio::net::TcpListener::bind(addr)
             .await
             .expect("failed to bind address"),
-        app,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await
     .expect("server error");
@@ -126,4 +178,31 @@ async fn main() {
 
 async fn health() -> &'static str {
     "ok"
+}
+
+async fn monitoring_middleware<B>(
+    State(state): State<AppState>,
+    req: Request<B>,
+    next: Next<B>,
+) -> Response {
+    let method = req.method().to_string();
+    let path = req.uri().path().to_string();
+    let response = next.run(req).await;
+    let status = response.status();
+
+    if status.is_server_error() {
+        let _ = record_audit_event(
+            &state.pool,
+            None,
+            "api.error",
+            serde_json::json!({
+                "method": method,
+                "path": path,
+                "status": status.as_u16()
+            }),
+        )
+        .await;
+    }
+
+    response
 }

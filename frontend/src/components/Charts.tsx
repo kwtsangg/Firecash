@@ -419,6 +419,8 @@ type CandlestickChartProps = {
   formatValue?: (value: number) => string;
   formatLabel?: (label: string) => string;
   showAxisLabels?: boolean;
+  axisTitleX?: string;
+  axisTitleY?: string;
 };
 
 export function CandlestickChart({
@@ -426,6 +428,8 @@ export function CandlestickChart({
   formatValue,
   formatLabel,
   showAxisLabels = true,
+  axisTitleX = "Date",
+  axisTitleY = "Price",
 }: CandlestickChartProps) {
   if (candles.length === 0) {
     return <div className="chart-empty">No data</div>;
@@ -436,8 +440,8 @@ export function CandlestickChart({
   const max = Math.max(...values);
   const min = Math.min(...values);
   const range = max - min || 1;
-  const paddingX = 6;
-  const paddingY = 8;
+  const paddingX = showAxisLabels ? 12 : 6;
+  const paddingY = showAxisLabels ? 12 : 8;
   const plotWidth = 100 - paddingX * 2;
   const plotHeight = 100 - paddingY * 2;
   const valuePadding = range === 0 ? Math.max(1, Math.abs(max) * 0.1) : range * 0.08;
@@ -652,10 +656,10 @@ export function CandlestickChart({
           ? defaultYLabels.map((item, index) => (
               <text
                 key={`y-${item.label}-${index}`}
-                x="2"
+                x={paddingX - 2}
                 y={item.position}
                 className="chart-axis-text"
-                textAnchor="start"
+                textAnchor="end"
               >
                 {item.label}
               </text>
@@ -675,6 +679,12 @@ export function CandlestickChart({
             ))
           : null}
       </svg>
+      {showAxisLabels ? (
+        <>
+          <div className="chart-axis-title y">{axisTitleY}</div>
+          <div className="chart-axis-title x">{axisTitleX}</div>
+        </>
+      ) : null}
       {tooltip ? (
         <div
           className="chart-tooltip"

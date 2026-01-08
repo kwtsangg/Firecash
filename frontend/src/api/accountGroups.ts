@@ -10,6 +10,13 @@ export type AccountGroupMembership = {
   group_id: string;
 };
 
+export type AccountGroupUser = {
+  user_id: string;
+  name: string;
+  email: string;
+  role: "view" | "edit" | "admin";
+};
+
 export async function fetchAccountGroups() {
   return get<AccountGroup[]>("/api/account-groups");
 }
@@ -34,4 +41,20 @@ export async function updateAccountGroup(
 
 export async function deleteAccountGroup(groupId: string) {
   return del(`/api/account-groups/${groupId}`);
+}
+
+export async function fetchAccountGroupUsers(groupId: string) {
+  return get<AccountGroupUser[]>(`/api/account-groups/${groupId}/members`);
+}
+
+export async function addAccountGroupUser(groupId: string, email: string, role: string) {
+  return post(`/api/account-groups/${groupId}/members`, { email, role });
+}
+
+export async function updateAccountGroupUser(groupId: string, userId: string, role: string) {
+  return put(`/api/account-groups/${groupId}/members/${userId}`, { role });
+}
+
+export async function removeAccountGroupUser(groupId: string, userId: string) {
+  return del(`/api/account-groups/${groupId}/members/${userId}`);
 }

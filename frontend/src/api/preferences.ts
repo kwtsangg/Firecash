@@ -4,12 +4,16 @@ type PreferencesResponse = {
   categories?: string[];
   strategies?: string[];
   holding_strategies?: Record<string, string>;
+  retention_days?: number;
+  export_redaction?: string;
 };
 
 export type Preferences = {
   categories: string[];
   strategies: string[];
   holdingStrategies: Record<string, string>;
+  retentionDays?: number | null;
+  exportRedaction: string;
 };
 
 export const DEFAULT_CATEGORIES = ["General", "Housing", "Investing", "Lifestyle", "Bills"];
@@ -40,6 +44,8 @@ export async function fetchPreferences(): Promise<Preferences> {
     categories: normalizeList(response.categories, DEFAULT_CATEGORIES),
     strategies: normalizeList(response.strategies, DEFAULT_STRATEGIES),
     holdingStrategies: normalizeHoldingStrategies(response.holding_strategies),
+    retentionDays: response.retention_days ?? null,
+    exportRedaction: response.export_redaction ?? "none",
   };
 }
 
@@ -54,10 +60,18 @@ export async function updatePreferences(update: Partial<Preferences>): Promise<P
   if (update.holdingStrategies) {
     payload.holding_strategies = update.holdingStrategies;
   }
+  if (update.retentionDays !== undefined) {
+    payload.retention_days = update.retentionDays ?? 0;
+  }
+  if (update.exportRedaction) {
+    payload.export_redaction = update.exportRedaction;
+  }
   const response = await put<PreferencesResponse>("/api/preferences", payload);
   return {
     categories: normalizeList(response.categories, DEFAULT_CATEGORIES),
     strategies: normalizeList(response.strategies, DEFAULT_STRATEGIES),
     holdingStrategies: normalizeHoldingStrategies(response.holding_strategies),
+    retentionDays: response.retention_days ?? null,
+    exportRedaction: response.export_redaction ?? "none",
   };
 }

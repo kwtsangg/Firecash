@@ -1,7 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
 import LoadingState from "../components/LoadingState";
+import Modal from "../components/Modal";
 import { useAuth } from "../components/AuthContext";
+import { exportBackup, restoreBackup, type BackupPayload } from "../api/backup";
+import { fetchAuditLogs, type AuditLogEntry } from "../api/audit";
+import {
+  addAccountGroupUser,
+  fetchAccountGroups,
+  fetchAccountGroupUsers,
+  removeAccountGroupUser,
+  updateAccountGroupUser,
+  type AccountGroup,
+  type AccountGroupUser,
+} from "../api/accountGroups";
 import { fetchPreferences, updatePreferences } from "../api/preferences";
 import { get, post, put } from "../utils/apiClient";
 import { formatDateDisplay } from "../utils/date";
@@ -38,9 +50,34 @@ export default function SettingsPage() {
   const [fxRates, setFxRates] = useState<FxRate[]>([]);
   const [isPreferencesLoading, setIsPreferencesLoading] = useState(true);
   const [preferencesError, setPreferencesError] = useState<string | null>(null);
+  const [exportRedaction, setExportRedaction] = useState("none");
+  const [retentionDays, setRetentionDays] = useState<number | null>(null);
+  const [isBackupBusy, setIsBackupBusy] = useState(false);
+  const [restorePayload, setRestorePayload] = useState<BackupPayload | null>(null);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [isRestoreOpen, setIsRestoreOpen] = useState(false);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [auditError, setAuditError] = useState<string | null>(null);
+  const [accountGroups, setAccountGroups] = useState<AccountGroup[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [groupMembers, setGroupMembers] = useState<AccountGroupUser[]>([]);
+  const [memberEmail, setMemberEmail] = useState("");
+  const [memberRole, setMemberRole] = useState<"view" | "edit" | "admin">("view");
+  const [isMembershipSaving, setIsMembershipSaving] = useState(false);
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
+  };
+
+  const downloadFile = (blob: Blob, filename: string) => {
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
   };
 
   useEffect(() => {
@@ -77,6 +114,8 @@ export default function SettingsPage() {
       const response = await fetchPreferences();
       setCategories(response.categories);
       setStrategies(response.strategies);
+      setRetentionDays(response.retentionDays ?? null);
+      setExportRedaction(response.exportRedaction);
     } catch (error) {
       setPreferencesError("Unable to load preferences right now.");
     } finally {
@@ -100,6 +139,65 @@ export default function SettingsPage() {
   useEffect(() => {
     loadFxRates();
   }, []);
+
+  const loadAuditLogs = async () => {
+    setAuditError(null);
+    try {
+      const logs = await fetchAuditLogs();
+      setAuditLogs(logs);
+    } catch (error) {
+      setAuditError("Audit logs are available to admins only.");
+    }
+  };
+
+  useEffect(() => {
+    loadAuditLogs();
+  }, []);
+
+  const loadAccountGroups = async () => {
+    try {
+      const groups = await fetchAccountGroups();
+      setAccountGroups(groups);
+      setSelectedGroupId(groups[0]?.id ?? null);
+    } catch (error) {
+      setAccountGroups([]);
+      setSelectedGroupId(null);
+    }
+  };
+
+  useEffect(() => {
+    loadAccountGroups();
+  }, []);
+
+  const loadGroupMembers = async (groupId: string | null) => {
+    if (!groupId) {
+      setGroupMembers([]);
+      return;
+    }
+    try {
+      const members = await fetchAccountGroupUsers(groupId);
+      setGroupMembers(members);
+    } catch (error) {
+      setGroupMembers([]);
+    }
+  };
+
+  useEffect(() => {
+    loadGroupMembers(selectedGroupId);
+  }, [selectedGroupId]);
+
+  const selectedGroupName = useMemo(
+    () => accountGroups.find((group) => group.id === selectedGroupId)?.name ?? "Household",
+    [accountGroups, selectedGroupId],
+  );
+  const includePii = exportRedaction !== "pii";
+  const retentionOptions = [
+    { label: "Keep forever", value: null },
+    { label: "30 days", value: 30 },
+    { label: "90 days", value: 90 },
+    { label: "180 days", value: 180 },
+    { label: "1 year", value: 365 },
+  ];
 
   return (
     <section className="page">
@@ -210,37 +308,288 @@ export default function SettingsPage() {
           </button>
         </div>
         <div className="card">
-          <h3>Data management</h3>
-          <p className="muted">Export reports or clean up local settings.</p>
+          <h3>Backup &amp; restore</h3>
+          <p className="muted">
+            Export a versioned snapshot of your data or restore a saved backup.
+          </p>
           <div className="action-grid">
             <button
-              className="pill"
-              onClick={() => showToast("Export queued", "Transactions export will download shortly.")}
+              className="pill primary"
+              disabled={isBackupBusy}
+              onClick={async () => {
+                setIsBackupBusy(true);
+                try {
+                  const backup = await exportBackup("json", includePii);
+                  downloadFile(
+                    new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" }),
+                    "firecash-backup.json",
+                  );
+                  showToast("Backup ready", "JSON export has been downloaded.");
+                } catch (error) {
+                  showToast("Export failed", "Unable to create a JSON backup.");
+                } finally {
+                  setIsBackupBusy(false);
+                }
+              }}
             >
-              Export transactions
+              {isBackupBusy ? "Preparing..." : "Export JSON"}
             </button>
             <button
               className="pill"
-              onClick={() => showToast("Export queued", "Dashboard export will download shortly.")}
+              disabled={isBackupBusy}
+              onClick={async () => {
+                setIsBackupBusy(true);
+                try {
+                  const csvBlob = await exportBackup("csv", includePii);
+                  downloadFile(csvBlob, "firecash-transactions.csv");
+                  showToast("CSV ready", "Transactions export has been downloaded.");
+                } catch (error) {
+                  showToast("Export failed", "Unable to create a CSV export.");
+                } finally {
+                  setIsBackupBusy(false);
+                }
+              }}
             >
-              Export dashboard
+              Export CSV
             </button>
           </div>
+          <div className="action-grid">
+            <label className="file-upload">
+              <input
+                type="file"
+                accept="application/json"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (!file) {
+                    return;
+                  }
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    try {
+                      const parsed = JSON.parse(reader.result as string) as BackupPayload;
+                      if (!parsed.metadata || !parsed.metadata.schema_version) {
+                        throw new Error("Missing metadata");
+                      }
+                      setRestorePayload(parsed);
+                      setRestoreError(null);
+                      setIsRestoreOpen(true);
+                    } catch (error) {
+                      setRestoreError("Invalid backup file. Please choose a Firecash export.");
+                      setRestorePayload(null);
+                    }
+                  };
+                  reader.readAsText(file);
+                }}
+              />
+              <span className="pill">Select backup file</span>
+            </label>
+            <button
+              className="pill"
+              disabled={!restorePayload}
+              onClick={() => setIsRestoreOpen(true)}
+            >
+              Review restore
+            </button>
+          </div>
+          {restoreError ? <p className="input-helper">{restoreError}</p> : null}
         </div>
         <div className="card">
-          <h3>Quick actions</h3>
-          <p className="muted">Common shortcuts and utilities.</p>
-          <div className="action-grid">
-            <button
-              className="pill"
-              onClick={() => showToast("Group creator ready", "Name your new group.")}
-            >
-              Create Group
-            </button>
-            <button className="pill" onClick={() => showToast("Snapshot shared", "Link copied.")}>
-              Share Snapshot
-            </button>
+          <h3>Privacy controls</h3>
+          <p className="muted">Control what exports include and how long data is retained.</p>
+          <div className="form-grid">
+            <label>
+              Export redaction
+              <select
+                value={exportRedaction}
+                onChange={async (event) => {
+                  const next = event.target.value;
+                  setExportRedaction(next);
+                  try {
+                    await updatePreferences({ exportRedaction: next });
+                    showToast("Export settings saved", "Redaction preferences updated.");
+                  } catch (error) {
+                    showToast("Save failed", "Unable to update export redaction.");
+                  }
+                }}
+              >
+                <option value="none">Include PII (merchant, notes)</option>
+                <option value="pii">Redact PII fields</option>
+              </select>
+            </label>
+            <label>
+              Retention policy
+              <select
+                value={retentionDays ?? "keep"}
+                onChange={async (event) => {
+                  const value = event.target.value === "keep" ? null : Number(event.target.value);
+                  setRetentionDays(value);
+                  try {
+                    await updatePreferences({ retentionDays: value });
+                    showToast("Retention updated", "Policy saved and enforced.");
+                  } catch (error) {
+                    showToast("Save failed", "Unable to update retention policy.");
+                  }
+                }}
+              >
+                {retentionOptions.map((option) => (
+                  <option
+                    key={option.label}
+                    value={option.value === null ? "keep" : option.value}
+                  >
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
+          <p className="muted small">
+            Retention removes transactions older than the selected window when you save changes.
+          </p>
+        </div>
+        <div className="card">
+          <h3>Household sharing</h3>
+          <p className="muted">Invite members to shared account groups with role-based access.</p>
+          {accountGroups.length === 0 ? (
+            <p className="muted">Create an account group to start sharing.</p>
+          ) : (
+            <>
+              <label>
+                Account group
+                <select
+                  value={selectedGroupId ?? ""}
+                  onChange={(event) => setSelectedGroupId(event.target.value)}
+                >
+                  {accountGroups.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="action-grid">
+                <input
+                  type="email"
+                  placeholder="member@email.com"
+                  value={memberEmail}
+                  onChange={(event) => setMemberEmail(event.target.value)}
+                />
+                <select
+                  value={memberRole}
+                  onChange={(event) => setMemberRole(event.target.value as "view" | "edit" | "admin")}
+                >
+                  <option value="view">View</option>
+                  <option value="edit">Edit</option>
+                  <option value="admin">Admin</option>
+                </select>
+                <button
+                  className="pill"
+                  disabled={isMembershipSaving || !selectedGroupId}
+                  onClick={async () => {
+                    if (!selectedGroupId) {
+                      return;
+                    }
+                    if (!memberEmail.trim()) {
+                      showToast("Missing email", "Enter a member email to invite.");
+                      return;
+                    }
+                    setIsMembershipSaving(true);
+                    try {
+                      await addAccountGroupUser(selectedGroupId, memberEmail.trim(), memberRole);
+                      await loadGroupMembers(selectedGroupId);
+                      setMemberEmail("");
+                      showToast("Member invited", `Added to ${selectedGroupName}.`);
+                    } catch (error) {
+                      showToast("Invite failed", "Unable to add this member.");
+                    } finally {
+                      setIsMembershipSaving(false);
+                    }
+                  }}
+                >
+                  Invite
+                </button>
+              </div>
+              <div className="table compact">
+                <div className="table-row table-header columns-3">
+                  <span>Member</span>
+                  <span>Role</span>
+                  <span>Actions</span>
+                </div>
+                {groupMembers.map((member) => (
+                  <div className="table-row columns-3" key={member.user_id}>
+                    <span>
+                      {member.name} <span className="muted">({member.email})</span>
+                    </span>
+                    <span>
+                      <select
+                        value={member.role}
+                        onChange={async (event) => {
+                          if (!selectedGroupId) {
+                            return;
+                          }
+                          const role = event.target.value;
+                          try {
+                            await updateAccountGroupUser(selectedGroupId, member.user_id, role);
+                            await loadGroupMembers(selectedGroupId);
+                            showToast("Role updated", `${member.name} is now ${role}.`);
+                          } catch (error) {
+                            showToast("Update failed", "Unable to change role.");
+                          }
+                        }}
+                      >
+                        <option value="view">View</option>
+                        <option value="edit">Edit</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </span>
+                    <span>
+                      <button
+                        className="pill"
+                        onClick={async () => {
+                          if (!selectedGroupId) {
+                            return;
+                          }
+                          try {
+                            await removeAccountGroupUser(selectedGroupId, member.user_id);
+                            await loadGroupMembers(selectedGroupId);
+                            showToast("Member removed", `${member.name} removed.`);
+                          } catch (error) {
+                            showToast("Remove failed", "Unable to remove member.");
+                          }
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+        <div className="card">
+          <h3>Audit log</h3>
+          <p className="muted">Security activity visible to admins.</p>
+          {auditError ? (
+            <p className="input-helper">{auditError}</p>
+          ) : (
+            <div className="table compact">
+              <div className="table-row table-header columns-3">
+                <span>Action</span>
+                <span>Actor</span>
+                <span>Time</span>
+              </div>
+              {auditLogs.map((entry) => (
+                <div className="table-row columns-3" key={entry.id}>
+                  <span>{entry.action}</span>
+                  <span>
+                    {entry.user_name ?? "System"}{" "}
+                    <span className="muted">{entry.user_email ?? ""}</span>
+                  </span>
+                  <span>{formatDateDisplay(entry.created_at)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div className="card">
           <h3>Categories</h3>
@@ -436,6 +785,68 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
+      <Modal
+        title="Confirm restore"
+        description="Restoring will overwrite your current data. This cannot be undone."
+        isOpen={isRestoreOpen}
+        onClose={() => setIsRestoreOpen(false)}
+        footer={
+          <div className="modal-footer-actions">
+            <button className="pill" onClick={() => setIsRestoreOpen(false)}>
+              Cancel
+            </button>
+            <button
+              className="pill primary"
+              disabled={!restorePayload || isBackupBusy}
+              onClick={async () => {
+                if (!restorePayload) {
+                  return;
+                }
+                setIsBackupBusy(true);
+                try {
+                  await restoreBackup(restorePayload);
+                  showToast("Restore complete", "Your data has been restored.");
+                  setRestorePayload(null);
+                  setIsRestoreOpen(false);
+                } catch (error) {
+                  showToast("Restore failed", "Unable to restore this backup.");
+                } finally {
+                  setIsBackupBusy(false);
+                }
+              }}
+            >
+              Restore backup
+            </button>
+          </div>
+        }
+      >
+        {restorePayload ? (
+          <div className="table compact">
+            <div className="table-row table-header columns-3">
+              <span>Section</span>
+              <span>Count</span>
+              <span>Notes</span>
+            </div>
+            <div className="table-row columns-3">
+              <span>Accounts</span>
+              <span>{restorePayload.accounts.length}</span>
+              <span>Includes balances and currencies</span>
+            </div>
+            <div className="table-row columns-3">
+              <span>Transactions</span>
+              <span>{restorePayload.transactions.length}</span>
+              <span>Historical activity</span>
+            </div>
+            <div className="table-row columns-3">
+              <span>Assets</span>
+              <span>{restorePayload.assets.length}</span>
+              <span>Holdings snapshots</span>
+            </div>
+          </div>
+        ) : (
+          <p className="muted">Choose a valid backup file to continue.</p>
+        )}
+      </Modal>
     </section>
   );
 }

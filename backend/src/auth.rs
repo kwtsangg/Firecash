@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
-use crate::state::AppState;
+use crate::{audit::record_audit_event, state::AppState};
 
 #[derive(Serialize, Deserialize)]
 struct Claims {
@@ -56,6 +56,30 @@ pub struct UserProfile {
 #[derive(Clone)]
 pub struct AuthenticatedUser {
     pub id: Uuid,
+}
+
+pub async fn is_admin(
+    state: &AppState,
+    user_id: Uuid,
+) -> Result<bool, (StatusCode, String)> {
+    if state.admin_emails.is_empty() {
+        return Ok(false);
+    }
+    let email: Option<String> = sqlx::query_scalar(
+        r#"
+        SELECT email
+        FROM users
+        WHERE id = $1
+        "#,
+    )
+    .bind(user_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(internal_error)?;
+
+    Ok(email
+        .map(|value| state.admin_emails.contains(&value.to_lowercase()))
+        .unwrap_or(false))
 }
 
 impl FromRequestParts<AppState> for AuthenticatedUser {
@@ -113,6 +137,14 @@ pub async fn register(
     .await
     .map_err(internal_error)?;
 
+    let _ = record_audit_event(
+        &state.pool,
+        Some(user_id),
+        "user.register",
+        serde_json::json!({ "email": payload.email }),
+    )
+    .await;
+
     let token = issue_token(&state.jwt_secret, user_id)?;
     Ok(Json(AuthResponse { token, user_id }))
 }
@@ -139,6 +171,14 @@ pub async fn login(
     let user_id: Uuid = record.try_get("id").map_err(internal_error)?;
 
     verify_password(&payload.password, &password_hash)?;
+
+    let _ = record_audit_event(
+        &state.pool,
+        Some(user_id),
+        "user.login",
+        serde_json::json!({ "email": payload.email }),
+    )
+    .await;
 
     let token = issue_token(&state.jwt_secret, user_id)?;
     Ok(Json(AuthResponse {
@@ -191,6 +231,14 @@ pub async fn demo_login(
 
     seed_demo_data(&state.pool, user_id).await?;
 
+    let _ = record_audit_event(
+        &state.pool,
+        Some(user_id),
+        "user.demo_login",
+        serde_json::json!({ "email": demo_email }),
+    )
+    .await;
+
     let token = issue_token(&state.jwt_secret, user_id)?;
     Ok(Json(AuthResponse { token, user_id }))
 }
@@ -238,6 +286,14 @@ pub async fn update_me(
     .fetch_one(&state.pool)
     .await
     .map_err(internal_error)?;
+
+    let _ = record_audit_event(
+        &state.pool,
+        Some(user.id),
+        "user.profile_updated",
+        serde_json::json!({ "name": record.try_get::<String, _>("name").ok() }),
+    )
+    .await;
 
     Ok(Json(UserProfile {
         id: record.try_get("id").map_err(internal_error)?,
@@ -319,6 +375,19 @@ async fn seed_demo_data(
     .bind(group_id)
     .bind(user_id)
     .bind("Investments")
+    .execute(pool)
+    .await
+    .map_err(internal_error)?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO account_group_users (group_id, user_id, role)
+        VALUES ($1, $2, 'admin')
+        ON CONFLICT DO NOTHING
+        "#,
+    )
+    .bind(group_id)
+    .bind(user_id)
     .execute(pool)
     .await
     .map_err(internal_error)?;

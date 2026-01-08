@@ -440,8 +440,8 @@ export function CandlestickChart({
   const max = Math.max(...values);
   const min = Math.min(...values);
   const range = max - min || 1;
-  const paddingX = showAxisLabels ? 14 : 6;
-  const paddingY = showAxisLabels ? 14 : 8;
+  const paddingX = showAxisLabels ? 16 : 6;
+  const paddingY = showAxisLabels ? 16 : 8;
   const plotWidth = 100 - paddingX * 2;
   const plotHeight = 100 - paddingY * 2;
   const valuePadding = range === 0 ? Math.max(1, Math.abs(max) * 0.1) : range * 0.08;
@@ -450,13 +450,21 @@ export function CandlestickChart({
   const chartRange = chartMax - chartMin || 1;
   const candleWidth = Math.min(6, Math.max(1, plotWidth / candles.length - 0.6));
   const majorYCount = 5;
-  const majorXCount = 5;
+  const desiredXLabels = 4;
+  const xLabelStep = Math.max(1, Math.floor((candles.length - 1) / desiredXLabels));
+  const xLabelIndices = Array.from(
+    new Set(
+      Array.from({ length: desiredXLabels + 1 }, (_, index) =>
+        Math.min(index * xLabelStep, candles.length - 1),
+      ),
+    ),
+  );
   const minorPerMajor = 1;
   const majorYTicks = Array.from({ length: majorYCount }, (_, index) =>
     paddingY + (plotHeight * index) / (majorYCount - 1),
   );
-  const majorXTicks = Array.from({ length: majorXCount }, (_, index) =>
-    paddingX + (plotWidth * index) / (majorXCount - 1),
+  const majorXTicks = xLabelIndices.map(
+    (index) => paddingX + (index / Math.max(candles.length - 1, 1)) * plotWidth,
   );
   const minorYTicks = majorYTicks.flatMap((start, index) => {
     const next = majorYTicks[index + 1];
@@ -483,15 +491,15 @@ export function CandlestickChart({
     return { label, position: tick };
   });
 
-  const defaultXLabels = majorXTicks.map((tick, index) => {
-    const candleIndex = Math.round((index / (majorXCount - 1)) * (candles.length - 1));
+  const defaultXLabels = xLabelIndices.map((candleIndex, index) => {
+    const tick = majorXTicks[index];
     const candle = candles[candleIndex];
     const label = candle
       ? formatLabel
         ? formatLabel(candle.date)
         : candle.date
       : `${index + 1}`;
-    return { label, position: tick };
+    return { label, position: tick ?? paddingX };
   });
 
   const formatTooltipValue = (value: number) =>

@@ -6,7 +6,7 @@ export default function ReportsPage() {
       <header className="page-header">
         <div>
           <h1>{pageTitles.reports}</h1>
-          <p className="muted">Generate insights across accounts, budgets, and trends.</p>
+          <p className="muted">Generate insights across accounts, transactions, and trends.</p>
         </div>
         <button className="pill" type="button">
           Export report

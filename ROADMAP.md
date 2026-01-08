@@ -4,7 +4,7 @@ This roadmap captures the next steps to move Firecash from a template into a pro
 
 ## Current stage (based on code today)
 - Backend APIs for accounts, account groups, assets, transactions, recurring transactions, and metrics are in place.
-- Frontend UI exists with charts, KPIs, and filters, but it is still wired to mock data.
+- Frontend UI uses live API data for dashboard, accounts, transactions, stocks, and settings, while reports remain a placeholder.
 - Worker scaffolding exists, but market price and FX ingestion are not yet connected.
 - Data model supports multi-currency and price history, but import/reconciliation tooling is missing.
 
@@ -14,11 +14,10 @@ This roadmap captures the next steps to move Firecash from a template into a pro
 - Solidify information architecture: clear navigation, breadcrumbs, and consistent page titles.
 - Establish accessibility baselines (contrast, keyboard navigation, focus states).
 - Standardize empty states and loading patterns so users always know what to do next.
-- Replace mock UI data with live API integrations, including loading/error states and optimistic updates.
-- Implement core management flows in the UI (account groups, recurring transactions, asset price refresh).
+- Finish wiring remaining placeholder screens (reports, market overview) to API data.
+- Implement core management flows in the UI (recurring transactions, asset price refresh).
 
 ## Next (core money management)
-- Budgets by category (monthly/weekly), including alerts when thresholds are exceeded.
 - Transaction categories + merchant labeling, with bulk edit support and category rules.
 - Import/export tools (CSV/OFX) with mapping, validation, and duplicate detection.
 - Account group membership management in the UI (read + update).
@@ -31,7 +30,7 @@ This roadmap captures the next steps to move Firecash from a template into a pro
 - Reports: spending by category, cashflow trends, and net worth projections.
 - Savings goals and progress tracking with recommended monthly targets.
 - Smart categorization: merchant-based rules + optional ML suggestions.
-- Notification center (email/in-app) for large transactions or budget overages.
+- Notification center (email/in-app) for large transactions.
 - Live market data ingestion for assets and FX (scheduled fetch, rate limiting, retries).
 
 ## Later (trust + collaboration)
@@ -44,6 +43,6 @@ This roadmap captures the next steps to move Firecash from a template into a pro
 ## Long-term (ecosystem + polish)
 - API keys and read-only access tokens for integrations.
 - Asset performance tracking with refresh scheduling and price sources.
-- Integrations: bank sync partners, payroll, and popular budgeting tools.
+- Integrations: bank sync partners, payroll, and complementary finance tools.
 - Theming, localization, and accessibility certification.
 - Community contributions guide, public roadmap voting, and plugin architecture.

@@ -2,7 +2,6 @@ export const pageTitles = {
   dashboard: "Dashboard",
   accounts: "Accounts",
   transactions: "Transactions",
-  budgets: "Budgets",
   reports: "Reports",
   settings: "Settings",
   stocks: "Stocks",

@@ -4,7 +4,6 @@ import { pageTitles } from "../utils/pageTitles";
 const primarySections = [
   { label: pageTitles.accounts, to: "/accounts" },
   { label: pageTitles.transactions, to: "/transactions" },
-  { label: pageTitles.budgets, to: "/budgets" },
   { label: pageTitles.reports, to: "/reports" },
   { label: pageTitles.settings, to: "/settings" },
 ];

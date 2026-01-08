@@ -15,11 +15,20 @@ import {
   type AccountGroupUser,
 } from "../api/accountGroups";
 import { fetchPreferences, updatePreferences } from "../api/preferences";
+import {
+  createApiToken,
+  fetchApiTokens,
+  revokeApiToken,
+  type ApiTokenCreated,
+  type ApiTokenSummary,
+} from "../api/apiTokens";
 import { get, post, put } from "../utils/apiClient";
 import { formatDateDisplay } from "../utils/date";
 import { getFriendlyErrorMessage } from "../utils/errorMessages";
+import { getLocale, setLocale, supportedLocales, type SupportedLocale } from "../utils/localization";
 import { pageTitles } from "../utils/pageTitles";
 import { usePageMeta } from "../utils/pageMeta";
+import { getThemePreference, setThemePreference, type ThemePreference } from "../utils/theme";
 
 type UserProfile = {
   id: string;
@@ -64,6 +73,20 @@ export default function SettingsPage() {
   const [memberEmail, setMemberEmail] = useState("");
   const [memberRole, setMemberRole] = useState<"view" | "edit" | "admin">("view");
   const [isMembershipSaving, setIsMembershipSaving] = useState(false);
+  const [assetRefreshCadence, setAssetRefreshCadence] = useState("daily");
+  const [assetDataSource, setAssetDataSource] = useState("stooq");
+  const [themePreference, setThemePreferenceState] = useState<ThemePreference>(() =>
+    getThemePreference(),
+  );
+  const [locale, setLocaleState] = useState<SupportedLocale>(() => getLocale());
+  const [apiTokens, setApiTokens] = useState<ApiTokenSummary[]>([]);
+  const [isTokenLoading, setIsTokenLoading] = useState(true);
+  const [tokenName, setTokenName] = useState("");
+  const [tokenReadOnly, setTokenReadOnly] = useState(true);
+  const [tokenExpiresAt, setTokenExpiresAt] = useState("");
+  const [isTokenSaving, setIsTokenSaving] = useState(false);
+  const [tokenReveal, setTokenReveal] = useState<ApiTokenCreated | null>(null);
+  const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
@@ -116,6 +139,8 @@ export default function SettingsPage() {
       setStrategies(response.strategies);
       setRetentionDays(response.retentionDays ?? null);
       setExportRedaction(response.exportRedaction);
+      setAssetRefreshCadence(response.assetRefreshCadence);
+      setAssetDataSource(response.assetDataSource);
     } catch (error) {
       setPreferencesError("Unable to load preferences right now.");
     } finally {
@@ -169,6 +194,22 @@ export default function SettingsPage() {
     loadAccountGroups();
   }, []);
 
+  const loadApiTokens = async () => {
+    setIsTokenLoading(true);
+    try {
+      const tokens = await fetchApiTokens();
+      setApiTokens(tokens);
+    } catch (error) {
+      setApiTokens([]);
+    } finally {
+      setIsTokenLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadApiTokens();
+  }, []);
+
   const loadGroupMembers = async (groupId: string | null) => {
     if (!groupId) {
       setGroupMembers([]);
@@ -204,12 +245,14 @@ export default function SettingsPage() {
       <header className="page-header">
         <div>
           <h1>{pageTitles.settings}</h1>
-          <p className="muted">Profile, currency, and API access.</p>
+          <p className="muted">Profile, access, and personalization.</p>
         </div>
         <div className="toolbar">
           <button
             className="pill"
-            onClick={() => showToast("API keys opened", "Create keys for external tools.")}
+            onClick={() =>
+              document.getElementById("api-tokens")?.scrollIntoView({ behavior: "smooth" })
+            }
           >
             Manage API Keys
           </button>
@@ -281,6 +324,129 @@ export default function SettingsPage() {
           >
             {isSaving ? "Saving..." : "Save changes"}
           </button>
+        </div>
+        <div className="card" id="api-tokens">
+          <h3>API tokens</h3>
+          <p className="muted">
+            Create access tokens for integrations. Read-only tokens can view data without
+            changes.
+          </p>
+          <div className="alert-card">
+            <strong>Keep tokens secret</strong>
+            <p className="muted">
+              Tokens are shown once. Store them in a password manager and revoke immediately if
+              exposed.
+            </p>
+          </div>
+          <div className="form-grid">
+            <label>
+              Token name
+              <input
+                type="text"
+                value={tokenName}
+                onChange={(event) => setTokenName(event.target.value)}
+                placeholder="CI sync token"
+              />
+            </label>
+            <label>
+              Access level
+              <select
+                value={tokenReadOnly ? "read" : "full"}
+                onChange={(event) => setTokenReadOnly(event.target.value === "read")}
+              >
+                <option value="read">Read-only</option>
+                <option value="full">Full access</option>
+              </select>
+            </label>
+            <label>
+              Expiration (optional)
+              <input
+                type="date"
+                value={tokenExpiresAt}
+                onChange={(event) => setTokenExpiresAt(event.target.value)}
+              />
+            </label>
+          </div>
+          <button
+            className="pill primary"
+            disabled={isTokenSaving}
+            onClick={async () => {
+              if (!tokenName.trim()) {
+                showToast("Missing name", "Add a token name to continue.");
+                return;
+              }
+              setIsTokenSaving(true);
+              try {
+                const expiresAtIso = tokenExpiresAt
+                  ? new Date(`${tokenExpiresAt}T23:59:59`).toISOString()
+                  : null;
+                const created = await createApiToken({
+                  name: tokenName.trim(),
+                  is_read_only: tokenReadOnly,
+                  expires_at: expiresAtIso,
+                });
+                setTokenName("");
+                setTokenExpiresAt("");
+                setTokenReveal(created);
+                setIsTokenModalOpen(true);
+                await loadApiTokens();
+              } catch (error) {
+                showToast(
+                  "Token creation failed",
+                  getFriendlyErrorMessage(error, "Unable to create this token."),
+                );
+              } finally {
+                setIsTokenSaving(false);
+              }
+            }}
+          >
+            {isTokenSaving ? "Creating..." : "Create token"}
+          </button>
+          {isTokenLoading ? (
+            <LoadingState
+              title="Loading tokens"
+              description="Fetching your active API tokens."
+              className="loading-state-inline"
+            />
+          ) : apiTokens.length === 0 ? (
+            <p className="muted">No API tokens yet.</p>
+          ) : (
+            <div className="table compact">
+              <div className="table-row table-header columns-4">
+                <span>Name</span>
+                <span>Prefix</span>
+                <span>Access</span>
+                <span>Actions</span>
+              </div>
+              {apiTokens.map((token) => (
+                <div className="table-row columns-4" key={token.id}>
+                  <span>{token.name}</span>
+                  <span>{token.token_prefix ?? "Hidden"}</span>
+                  <span>{token.is_read_only ? "Read-only" : "Full"}</span>
+                  <span>
+                    <button
+                      className="pill"
+                      disabled={Boolean(token.revoked_at)}
+                      onClick={async () => {
+                        try {
+                          await revokeApiToken(token.id);
+                          await loadApiTokens();
+                          showToast("Token revoked", "Access has been removed.");
+                        } catch (error) {
+                          showToast(
+                            "Revoke failed",
+                            getFriendlyErrorMessage(error, "Unable to revoke this token."),
+                          );
+                        }
+                      }}
+                    >
+                      {token.revoked_at ? "Revoked" : "Revoke"}
+                    </button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div className="card">
           <h3>Currency</h3>
@@ -444,6 +610,100 @@ export default function SettingsPage() {
           </div>
           <p className="muted small">
             Retention removes transactions older than the selected window when you save changes.
+          </p>
+        </div>
+        <div className="card">
+          <h3>Theme &amp; language</h3>
+          <p className="muted">Customize the visual theme and default language.</p>
+          <div className="form-grid">
+            <label>
+              Theme
+              <select
+                value={themePreference}
+                onChange={(event) => {
+                  const next = event.target.value as ThemePreference;
+                  setThemePreferenceState(next);
+                  setThemePreference(next);
+                  showToast("Theme updated", `Theme set to ${next}.`);
+                }}
+              >
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+                <option value="system">System</option>
+              </select>
+            </label>
+            <label>
+              Language
+              <select
+                value={locale}
+                onChange={(event) => {
+                  const next = event.target.value as SupportedLocale;
+                  setLocaleState(next);
+                  setLocale(next);
+                  showToast("Language updated", `Default language set to ${next}.`);
+                }}
+              >
+                {supportedLocales.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <p className="muted small">
+            Translation coverage will expand over time. Your selection is saved locally.
+          </p>
+        </div>
+        <div className="card">
+          <h3>Asset refresh settings</h3>
+          <p className="muted">Control refresh cadence and data source labels for holdings.</p>
+          <div className="form-grid">
+            <label>
+              Refresh cadence
+              <select
+                value={assetRefreshCadence}
+                onChange={async (event) => {
+                  const next = event.target.value;
+                  setAssetRefreshCadence(next);
+                  try {
+                    await updatePreferences({ assetRefreshCadence: next });
+                    showToast("Cadence saved", "Asset refresh cadence updated.");
+                  } catch (error) {
+                    showToast("Save failed", "Unable to update refresh cadence.");
+                  }
+                }}
+              >
+                <option value="hourly">Hourly</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="manual">Manual only</option>
+              </select>
+            </label>
+            <label>
+              Data source label
+              <select
+                value={assetDataSource}
+                onChange={async (event) => {
+                  const next = event.target.value;
+                  setAssetDataSource(next);
+                  try {
+                    await updatePreferences({ assetDataSource: next });
+                    showToast("Source saved", "Asset data source label updated.");
+                  } catch (error) {
+                    showToast("Save failed", "Unable to update data source.");
+                  }
+                }}
+              >
+                <option value="stooq">Stooq pricing</option>
+                <option value="manual">Manual uploads</option>
+                <option value="broker">Broker APIs</option>
+                <option value="custom">Custom feed</option>
+              </select>
+            </label>
+          </div>
+          <p className="muted small">
+            These settings apply to asset refresh scheduling and labels shown in performance views.
           </p>
         </div>
         <div className="card">
@@ -785,6 +1045,50 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
+      <Modal
+        title="API token created"
+        description="Copy this token now. You won’t be able to see it again."
+        isOpen={isTokenModalOpen}
+        onClose={() => {
+          setIsTokenModalOpen(false);
+          setTokenReveal(null);
+        }}
+        footer={
+          <div className="modal-footer-actions">
+            <button className="pill" onClick={() => setIsTokenModalOpen(false)}>
+              Close
+            </button>
+            <button
+              className="pill primary"
+              onClick={async () => {
+                if (!tokenReveal) {
+                  return;
+                }
+                await navigator.clipboard.writeText(tokenReveal.token);
+                showToast("Token copied", "Paste it into your integration right away.");
+              }}
+              disabled={!tokenReveal}
+            >
+              Copy token
+            </button>
+          </div>
+        }
+      >
+        {tokenReveal ? (
+          <div className="stack">
+            <div className="alert-card">
+              <strong>{tokenReveal.token_prefix}</strong>
+              <p className="muted">Access level: {tokenReveal.is_read_only ? "Read-only" : "Full"}</p>
+              <p className="muted">{tokenReveal.token}</p>
+            </div>
+            <p className="muted small">
+              Store this token securely. If lost, generate a new one and revoke the old token.
+            </p>
+          </div>
+        ) : (
+          <p className="muted">Create a token using the form above.</p>
+        )}
+      </Modal>
       <Modal
         title="Confirm restore"
         description="Restoring will overwrite your current data. This cannot be undone."

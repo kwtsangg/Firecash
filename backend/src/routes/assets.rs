@@ -42,6 +42,21 @@ pub struct AssetPrice {
 }
 
 #[derive(serde::Serialize)]
+pub struct AssetPerformance {
+    pub asset_id: Uuid,
+    pub symbol: String,
+    pub quantity: f64,
+    pub currency_code: String,
+    pub start_price: Option<f64>,
+    pub latest_price: Option<f64>,
+    pub start_at: Option<DateTime<Utc>>,
+    pub latest_at: Option<DateTime<Utc>>,
+    pub return_pct: Option<f64>,
+    pub benchmark_label: String,
+    pub benchmark_return: Option<f64>,
+}
+
+#[derive(serde::Serialize)]
 pub struct RefreshPricesResponse {
     pub updated: usize,
 }
@@ -215,6 +230,123 @@ pub async fn list_asset_prices(
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(Json(prices))
+}
+
+pub async fn list_asset_performance(
+    State(state): State<AppState>,
+    user: AuthenticatedUser,
+) -> Result<Json<Vec<AssetPerformance>>, (axum::http::StatusCode, String)> {
+    let records = sqlx::query(
+        r#"
+        WITH accessible_accounts AS (
+            SELECT id
+            FROM accounts
+            WHERE user_id = $1
+            UNION
+            SELECT agm.account_id
+            FROM account_group_members agm
+            INNER JOIN account_group_users agu ON agm.group_id = agu.group_id
+            WHERE agu.user_id = $1
+        ),
+        price_bounds AS (
+            SELECT asset_id,
+                   FIRST_VALUE(price) OVER (PARTITION BY asset_id ORDER BY recorded_at) as start_price,
+                   FIRST_VALUE(recorded_at) OVER (PARTITION BY asset_id ORDER BY recorded_at) as start_at,
+                   FIRST_VALUE(price) OVER (PARTITION BY asset_id ORDER BY recorded_at DESC) as latest_price,
+                   FIRST_VALUE(recorded_at) OVER (PARTITION BY asset_id ORDER BY recorded_at DESC) as latest_at
+            FROM price_history
+        ),
+        price_summary AS (
+            SELECT DISTINCT ON (asset_id)
+                asset_id,
+                start_price,
+                start_at,
+                latest_price,
+                latest_at
+            FROM price_bounds
+        )
+        SELECT a.id as asset_id,
+               a.symbol,
+               a.quantity,
+               a.currency_code,
+               ps.start_price,
+               ps.latest_price,
+               ps.start_at,
+               ps.latest_at
+        FROM assets a
+        LEFT JOIN price_summary ps ON ps.asset_id = a.id
+        WHERE a.account_id IN (SELECT id FROM accessible_accounts)
+        ORDER BY a.symbol
+        "#,
+    )
+    .bind(user.id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(crate::auth::internal_error)?;
+
+    let mut performances = Vec::new();
+    let mut benchmark_start_total = 0.0;
+    let mut benchmark_end_total = 0.0;
+
+    for row in &records {
+        let quantity: f64 = row
+            .try_get("quantity")
+            .map_err(crate::auth::internal_error)?;
+        let start_price: Option<f64> = row
+            .try_get("start_price")
+            .map_err(crate::auth::internal_error)?;
+        let latest_price: Option<f64> = row
+            .try_get("latest_price")
+            .map_err(crate::auth::internal_error)?;
+
+        if let Some(start_price) = start_price {
+            benchmark_start_total += quantity * start_price;
+        }
+        if let Some(latest_price) = latest_price {
+            benchmark_end_total += quantity * latest_price;
+        }
+    }
+
+    let benchmark_return = if benchmark_start_total > 0.0 {
+        Some((benchmark_end_total - benchmark_start_total) / benchmark_start_total)
+    } else {
+        None
+    };
+
+    for row in records {
+        let start_price: Option<f64> = row
+            .try_get("start_price")
+            .map_err(crate::auth::internal_error)?;
+        let latest_price: Option<f64> = row
+            .try_get("latest_price")
+            .map_err(crate::auth::internal_error)?;
+        let return_pct = match (start_price, latest_price) {
+            (Some(start), Some(latest)) if start > 0.0 => Some((latest - start) / start),
+            _ => None,
+        };
+
+        performances.push(AssetPerformance {
+            asset_id: row
+                .try_get("asset_id")
+                .map_err(crate::auth::internal_error)?,
+            symbol: row.try_get("symbol").map_err(crate::auth::internal_error)?,
+            quantity: row.try_get("quantity").map_err(crate::auth::internal_error)?,
+            currency_code: row
+                .try_get("currency_code")
+                .map_err(crate::auth::internal_error)?,
+            start_price,
+            latest_price,
+            start_at: row.try_get("start_at").map_err(crate::auth::internal_error)?,
+            latest_at: row
+                .try_get("latest_at")
+                .map_err(crate::auth::internal_error)?,
+            return_pct,
+            benchmark_label: "Firecash Composite".to_string(),
+            benchmark_return,
+        });
+    }
+
+    Ok(Json(performances))
 }
 
 pub async fn asset_price_status(

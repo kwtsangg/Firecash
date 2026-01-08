@@ -6,6 +6,8 @@ type PreferencesResponse = {
   holding_strategies?: Record<string, string>;
   retention_days?: number;
   export_redaction?: string;
+  asset_refresh_cadence?: string;
+  asset_data_source?: string;
 };
 
 export type Preferences = {
@@ -14,6 +16,8 @@ export type Preferences = {
   holdingStrategies: Record<string, string>;
   retentionDays?: number | null;
   exportRedaction: string;
+  assetRefreshCadence: string;
+  assetDataSource: string;
 };
 
 export const DEFAULT_CATEGORIES = ["General", "Housing", "Investing", "Lifestyle", "Bills"];
@@ -46,6 +50,8 @@ export async function fetchPreferences(): Promise<Preferences> {
     holdingStrategies: normalizeHoldingStrategies(response.holding_strategies),
     retentionDays: response.retention_days ?? null,
     exportRedaction: response.export_redaction ?? "none",
+    assetRefreshCadence: response.asset_refresh_cadence ?? "daily",
+    assetDataSource: response.asset_data_source ?? "stooq",
   };
 }
 
@@ -66,6 +72,12 @@ export async function updatePreferences(update: Partial<Preferences>): Promise<P
   if (update.exportRedaction) {
     payload.export_redaction = update.exportRedaction;
   }
+  if (update.assetRefreshCadence) {
+    payload.asset_refresh_cadence = update.assetRefreshCadence;
+  }
+  if (update.assetDataSource) {
+    payload.asset_data_source = update.assetDataSource;
+  }
   const response = await put<PreferencesResponse>("/api/preferences", payload);
   return {
     categories: normalizeList(response.categories, DEFAULT_CATEGORIES),
@@ -73,5 +85,7 @@ export async function updatePreferences(update: Partial<Preferences>): Promise<P
     holdingStrategies: normalizeHoldingStrategies(response.holding_strategies),
     retentionDays: response.retention_days ?? null,
     exportRedaction: response.export_redaction ?? "none",
+    assetRefreshCadence: response.asset_refresh_cadence ?? "daily",
+    assetDataSource: response.asset_data_source ?? "stooq",
   };
 }

@@ -74,6 +74,15 @@ async fn main() {
         .route("/api/demo-login", post(auth::demo_login))
         .route("/api/me", get(auth::me).put(auth::update_me))
         .route(
+            "/api/tokens",
+            get(routes::api_tokens::list_api_tokens)
+                .post(routes::api_tokens::create_api_token),
+        )
+        .route(
+            "/api/tokens/{id}/revoke",
+            post(routes::api_tokens::revoke_api_token),
+        )
+        .route(
             "/api/backup/export",
             get(routes::backup::export_backup),
         )
@@ -140,6 +149,10 @@ async fn main() {
         )
         .route("/api/assets", get(routes::assets::list_assets).post(routes::assets::create_asset))
         .route("/api/assets/prices", get(routes::assets::list_asset_prices))
+        .route(
+            "/api/assets/performance",
+            get(routes::assets::list_asset_performance),
+        )
         .route("/api/assets/price-status", get(routes::assets::asset_price_status))
         .route("/api/assets/refresh-prices", post(routes::assets::refresh_prices))
         .route("/api/assets/candles", get(routes::assets::list_candles))
@@ -155,6 +168,23 @@ async fn main() {
             "/api/preferences",
             get(routes::preferences::list_preferences)
                 .put(routes::preferences::update_preferences),
+        )
+        .route(
+            "/api/integrations",
+            get(routes::integrations::list_integrations)
+                .post(routes::integrations::create_integration),
+        )
+        .route(
+            "/api/integrations/catalog",
+            get(routes::integrations::list_integrations_catalog),
+        )
+        .route(
+            "/api/integrations/{id}/logs",
+            get(routes::integrations::list_integration_logs),
+        )
+        .route(
+            "/api/plugins",
+            get(routes::plugins::list_plugins).post(routes::plugins::register_plugin),
         )
         .layer(CorsLayer::new().allow_origin(Any).allow_headers(Any))
         .layer(GovernorLayer::new(governor_conf))

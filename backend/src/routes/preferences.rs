@@ -7,12 +7,14 @@ use std::collections::HashMap;
 use chrono::Duration;
 use crate::{audit::record_audit_event, auth::AuthenticatedUser, state::AppState};
 
-const PREFERENCE_KEYS: [&str; 5] = [
+const PREFERENCE_KEYS: [&str; 7] = [
     "categories",
     "strategies",
     "holding_strategies",
     "retention_days",
     "export_redaction",
+    "asset_refresh_cadence",
+    "asset_data_source",
 ];
 
 #[derive(Serialize)]
@@ -22,6 +24,8 @@ pub struct PreferencesResponse {
     pub holding_strategies: HashMap<String, String>,
     pub retention_days: Option<i64>,
     pub export_redaction: String,
+    pub asset_refresh_cadence: String,
+    pub asset_data_source: String,
 }
 
 #[derive(Deserialize)]
@@ -31,6 +35,8 @@ pub struct PreferencesUpdate {
     pub holding_strategies: Option<HashMap<String, String>>,
     pub retention_days: Option<i64>,
     pub export_redaction: Option<String>,
+    pub asset_refresh_cadence: Option<String>,
+    pub asset_data_source: Option<String>,
 }
 
 pub async fn list_preferences(
@@ -56,6 +62,8 @@ pub async fn list_preferences(
     let mut holding_strategies: HashMap<String, String> = HashMap::new();
     let mut retention_days: Option<i64> = None;
     let mut export_redaction = "none".to_string();
+    let mut asset_refresh_cadence = "daily".to_string();
+    let mut asset_data_source = "stooq".to_string();
 
     for row in rows {
         let key: String = row.try_get("key").map_err(crate::auth::internal_error)?;
@@ -86,6 +94,16 @@ pub async fn list_preferences(
                     export_redaction = parsed;
                 }
             }
+            "asset_refresh_cadence" => {
+                if let Ok(parsed) = serde_json::from_value::<String>(value) {
+                    asset_refresh_cadence = parsed;
+                }
+            }
+            "asset_data_source" => {
+                if let Ok(parsed) = serde_json::from_value::<String>(value) {
+                    asset_data_source = parsed;
+                }
+            }
             _ => {}
         }
     }
@@ -96,6 +114,8 @@ pub async fn list_preferences(
         holding_strategies,
         retention_days,
         export_redaction,
+        asset_refresh_cadence,
+        asset_data_source,
     }))
 }
 
@@ -132,6 +152,26 @@ pub async fn update_preferences(
         }
         updates.push((
             "export_redaction",
+            serde_json::to_value(normalized).unwrap_or(Value::Null),
+        ));
+    }
+    if let Some(asset_refresh_cadence) = payload.asset_refresh_cadence {
+        let normalized = asset_refresh_cadence.trim().to_lowercase();
+        if !matches!(normalized.as_str(), "hourly" | "daily" | "weekly" | "manual") {
+            return Err((StatusCode::BAD_REQUEST, "Invalid refresh cadence".into()));
+        }
+        updates.push((
+            "asset_refresh_cadence",
+            serde_json::to_value(normalized).unwrap_or(Value::Null),
+        ));
+    }
+    if let Some(asset_data_source) = payload.asset_data_source {
+        let normalized = asset_data_source.trim().to_lowercase();
+        if !matches!(normalized.as_str(), "stooq" | "manual" | "broker" | "custom") {
+            return Err((StatusCode::BAD_REQUEST, "Invalid data source".into()));
+        }
+        updates.push((
+            "asset_data_source",
             serde_json::to_value(normalized).unwrap_or(Value::Null),
         ));
     }

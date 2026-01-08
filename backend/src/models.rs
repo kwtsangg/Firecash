@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
-#[derive(Serialize, FromRow)]
+#[derive(Serialize, Deserialize, FromRow)]
 pub struct Account {
     pub id: Uuid,
     pub name: String,
@@ -31,7 +31,7 @@ pub struct UpdateAccountResponse {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Serialize, FromRow)]
+#[derive(Serialize, Deserialize, FromRow)]
 pub struct AccountGroup {
     pub id: Uuid,
     pub name: String,
@@ -55,7 +55,7 @@ pub struct UpdateAccountGroupResponse {
     pub name: String,
 }
 
-#[derive(Serialize, FromRow)]
+#[derive(Serialize, Deserialize, FromRow)]
 pub struct Transaction {
     pub id: Uuid,
     pub account_id: Uuid,
@@ -105,7 +105,7 @@ pub struct UpdateTransactionResponse {
     pub occurred_at: DateTime<Utc>,
 }
 
-#[derive(Serialize, FromRow)]
+#[derive(Serialize, Deserialize, FromRow)]
 pub struct RecurringTransaction {
     pub id: Uuid,
     pub account_id: Uuid,
@@ -182,7 +182,7 @@ pub struct FxRate {
     pub recorded_on: NaiveDate,
 }
 
-#[derive(Serialize, FromRow)]
+#[derive(Serialize, Deserialize, FromRow)]
 pub struct Asset {
     pub id: Uuid,
     pub account_id: Uuid,

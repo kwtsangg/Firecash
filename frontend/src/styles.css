@@ -522,6 +522,23 @@ textarea:focus-visible,
   flex: 1;
 }
 
+.candlestick-chart {
+  padding: 8px 12px 24px 28px;
+  box-sizing: border-box;
+}
+
+.candlestick-chart .chart-axis-text {
+  font-size: 3.2px;
+}
+
+.candlestick-chart .chart-axis-title.y {
+  left: 4px;
+}
+
+.candlestick-chart .chart-axis-title.x {
+  bottom: 4px;
+}
+
 .chart-crosshair {
   stroke: rgba(255, 255, 255, 0.7);
   stroke-width: 0.8;

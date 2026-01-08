@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
+import LoadingState from "../components/LoadingState";
 import { useAuth } from "../components/AuthContext";
 import { fetchPreferences, updatePreferences } from "../api/preferences";
 import { get, post, put } from "../utils/apiClient";
 import { formatDateDisplay } from "../utils/date";
 import { getFriendlyErrorMessage } from "../utils/errorMessages";
 import { pageTitles } from "../utils/pageTitles";
+import { usePageMeta } from "../utils/pageMeta";
 
 type UserProfile = {
   id: string;
@@ -21,6 +23,7 @@ type FxRate = {
 };
 
 export default function SettingsPage() {
+  usePageMeta({ title: pageTitles.settings });
   const { logout } = useAuth();
   const [toast, setToast] = useState<ActionToastData | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -123,7 +126,11 @@ export default function SettingsPage() {
           <h3>Profile</h3>
           <p className="muted">Update your profile and preferences.</p>
           {isLoading ? (
-            <p className="muted">Loading profile…</p>
+            <LoadingState
+              title="Loading profile"
+              description="Fetching your account details."
+              className="loading-state-inline"
+            />
           ) : profile ? (
             <div className="form-grid">
               <label>
@@ -252,6 +259,7 @@ export default function SettingsPage() {
               placeholder="New category"
               value={categoryName}
               onChange={(event) => setCategoryName(event.target.value)}
+              aria-label="New category"
             />
             <button
               className="pill"
@@ -334,6 +342,7 @@ export default function SettingsPage() {
               placeholder="New strategy"
               value={strategyName}
               onChange={(event) => setStrategyName(event.target.value)}
+              aria-label="New strategy"
             />
             <button
               className="pill"

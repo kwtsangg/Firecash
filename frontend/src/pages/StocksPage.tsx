@@ -19,6 +19,7 @@ import { formatDateDisplay, getDefaultRange, toDateInputValue } from "../utils/d
 import { supportedCurrencies } from "../utils/currency";
 import { getFriendlyErrorMessage } from "../utils/errorMessages";
 import { pageTitles } from "../utils/pageTitles";
+import { usePageMeta } from "../utils/pageMeta";
 
 type Account = {
   id: string;
@@ -148,6 +149,7 @@ function currencyFromSymbol(symbol: string) {
 }
 
 export default function StocksPage() {
+  usePageMeta({ title: pageTitles.stocks });
   const { currency: displayCurrency } = useCurrency();
   const { account: selectedAccount, group: selectedGroup } = useSelection();
   const [toast, setToast] = useState<ActionToastData | null>(null);

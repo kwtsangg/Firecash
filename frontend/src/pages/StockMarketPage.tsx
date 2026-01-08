@@ -1,22 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CandlestickChart } from "../components/Charts";
-import { get } from "../utils/apiClient";
+import EmptyState from "../components/EmptyState";
+import LoadingState from "../components/LoadingState";
+import {
+  Candle,
+  MarketOverviewItem,
+  fetchAssetSymbols,
+  fetchCandles,
+  fetchMarketOverview,
+} from "../api/market";
 import { formatCurrency } from "../utils/currency";
 import { formatDateDisplay } from "../utils/date";
 import { pageTitles } from "../utils/pageTitles";
-
-type Asset = {
-  id: string;
-  symbol: string;
-};
-
-type Candle = {
-  date: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-};
+import { usePageMeta } from "../utils/pageMeta";
 
 const POPULAR_SYMBOLS = [
   "AAPL",
@@ -47,11 +43,6 @@ const OVERVIEW_SYMBOLS = [
   { label: "Dow 30 (DIA)", symbol: "DIA" },
 ];
 
-function getCandleAt(candles: Candle[], offsetFromEnd: number) {
-  const index = candles.length + offsetFromEnd;
-  return index >= 0 && index < candles.length ? candles[index] : undefined;
-}
-
 function currencyFromSymbol(symbol: string) {
   const normalized = symbol.toUpperCase();
   if (normalized.endsWith(".HK")) {
@@ -76,6 +67,7 @@ function currencyFromSymbol(symbol: string) {
 }
 
 export default function StockMarketPage() {
+  usePageMeta({ title: pageTitles.stockMarket });
   const [symbols, setSymbols] = useState<string[]>([]);
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [candles, setCandles] = useState<Candle[]>([]);
@@ -86,15 +78,12 @@ export default function StockMarketPage() {
   const [isOverviewLoading, setIsOverviewLoading] = useState(false);
   const [overviewError, setOverviewError] = useState<string | null>(null);
   const [symbolsError, setSymbolsError] = useState<string | null>(null);
-  const [overview, setOverview] = useState<
-    { label: string; symbol: string; price: number | null; change: number | null }[]
-  >([]);
+  const [overview, setOverview] = useState<MarketOverviewItem[]>([]);
   const displayCurrency = selectedSymbol ? currencyFromSymbol(selectedSymbol) : "USD";
 
   const loadSymbols = useCallback(async () => {
     try {
-      const assets = await get<Asset[]>("/api/assets");
-      const assetSymbols = assets.map((asset) => asset.symbol);
+      const assetSymbols = await fetchAssetSymbols();
       setSymbols(Array.from(new Set([...assetSymbols, ...POPULAR_SYMBOLS])));
       setSymbolsError(null);
     } catch (error) {
@@ -106,19 +95,7 @@ export default function StockMarketPage() {
   const loadOverview = useCallback(async () => {
     setIsOverviewLoading(true);
     try {
-      const results = await Promise.all(
-        OVERVIEW_SYMBOLS.map(async (item) => {
-          const response = await get<{ candles: Candle[] }>(
-            `/api/assets/candles?symbol=${encodeURIComponent(item.symbol)}`,
-          );
-          const latest = getCandleAt(response.candles, -1);
-          const previous = getCandleAt(response.candles, -2);
-          const price = latest?.close ?? null;
-          const change =
-            latest && previous ? ((latest.close - previous.close) / previous.close) * 100 : null;
-          return { ...item, price, change };
-        }),
-      );
+      const results = await fetchMarketOverview(OVERVIEW_SYMBOLS);
       setOverview(results);
       setOverviewError(null);
     } catch (error) {
@@ -169,10 +146,8 @@ export default function StockMarketPage() {
     setIsLoading(true);
     setCandlesError(null);
     try {
-      const response = await get<{ candles: Candle[] }>(
-        `/api/assets/candles?symbol=${encodeURIComponent(symbol)}`,
-      );
-      setCandles(response.candles);
+      const response = await fetchCandles(symbol);
+      setCandles(response);
     } catch (error) {
       setCandles([]);
       setCandlesError("Unable to load candles. Try again or refresh later.");
@@ -217,11 +192,23 @@ export default function StockMarketPage() {
           </div>
         </div>
         {overviewError ? <p className="muted">{overviewError}</p> : null}
-        <div className="symbol-grid">
-          {isOverviewLoading ? (
-            <p className="muted">Loading market overview…</p>
-          ) : (
-            overview.map((item) => (
+        {isOverviewLoading ? (
+          <LoadingState
+            title="Loading market overview"
+            description="Pulling the latest index moves."
+            className="loading-state-inline"
+          />
+        ) : overview.length === 0 ? (
+          <EmptyState
+            title="No overview data yet"
+            description="Market snapshots will appear once data is available."
+            actionLabel="Refresh overview"
+            onAction={retryOverview}
+            actionHint="Check back later for the latest index updates."
+          />
+        ) : (
+          <div className="symbol-grid">
+            {overview.map((item) => (
               <div key={item.symbol} className="symbol-card">
                 <span>{item.label}</span>
                 <span className="muted">
@@ -229,15 +216,15 @@ export default function StockMarketPage() {
                     ? "No data"
                     : formatCurrency(item.price, currencyFromSymbol(item.symbol))}
                 </span>
-                <span className={item.change && item.change < 0 ? "status warn" : "status"}>
+                <span className={item.change !== null && item.change < 0 ? "status warn" : "status"}>
                   {item.change === null
                     ? "—"
                     : `${item.change > 0 ? "+" : ""}${item.change.toFixed(2)}%`}
                 </span>
               </div>
-            ))
-          )}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
       <div className="card">
         <div className="chart-header">
@@ -251,21 +238,32 @@ export default function StockMarketPage() {
             placeholder="Search symbols"
             value={query}
             onChange={(event) => setQuery(event.target.value.toUpperCase())}
+            aria-label="Search symbols"
           />
         </div>
         {symbolsError ? <p className="muted">{symbolsError}</p> : null}
         <div className="symbol-grid">
-          {filteredSymbols.map((symbol) => (
-            <button
-              type="button"
-              key={symbol}
-              className={`symbol-card ${selectedSymbol === symbol ? "active" : ""}`}
-              onClick={() => loadCandles(symbol)}
-            >
-              <span>{symbol}</span>
-              <span className="muted">Daily</span>
-            </button>
-          ))}
+          {filteredSymbols.length === 0 ? (
+            <EmptyState
+              title="No symbols found"
+              description="Try a different ticker or clear the search to see all symbols."
+              actionLabel="Clear search"
+              onAction={() => setQuery("")}
+              actionHint="Symbols from your holdings show up automatically."
+            />
+          ) : (
+            filteredSymbols.map((symbol) => (
+              <button
+                type="button"
+                key={symbol}
+                className={`symbol-card ${selectedSymbol === symbol ? "active" : ""}`}
+                onClick={() => loadCandles(symbol)}
+              >
+                <span>{symbol}</span>
+                <span className="muted">Daily</span>
+              </button>
+            ))
+          )}
         </div>
       </div>
       <div className="card chart-card">
@@ -296,23 +294,35 @@ export default function StockMarketPage() {
         </div>
         <div className="chart-surface">
           {isLoading ? (
-            <p className="muted">Loading candles…</p>
+            <LoadingState
+              title="Loading candles"
+              description="Fetching the latest daily price moves."
+              className="loading-state-inline"
+            />
           ) : candlesError ? (
-            <div className="empty-state">
-              <p className="muted">{candlesError}</p>
-              <button className="pill" type="button" onClick={retryCandles} disabled={!selectedSymbol}>
-                Try again
-              </button>
-            </div>
+            <EmptyState
+              title="Candles unavailable"
+              description={candlesError}
+              actionLabel="Try again"
+              onAction={retryCandles}
+              actionHint={selectedSymbol ? "We will retry the selected symbol." : undefined}
+            />
           ) : displayedCandles.length === 0 && selectedSymbol ? (
-            <div className="empty-state">
-              <p className="muted">No candles available for this symbol yet.</p>
-              <button className="pill" type="button" onClick={retryCandles}>
-                Refresh candles
-              </button>
-            </div>
+            <EmptyState
+              title="No candles yet"
+              description="Daily candles will appear once pricing data arrives."
+              actionLabel="Refresh candles"
+              onAction={retryCandles}
+              actionHint="Try again in a moment for fresh data."
+            />
           ) : displayedCandles.length === 0 ? (
-            <p className="muted">Select a symbol to view candles.</p>
+            <EmptyState
+              title="Select a symbol"
+              description="Choose a symbol from the list to visualize its price history."
+              actionLabel="Browse symbols"
+              onAction={() => setQuery("")}
+              actionHint="Use the search field to narrow the list."
+            />
           ) : (
             <CandlestickChart
               candles={displayedCandles}

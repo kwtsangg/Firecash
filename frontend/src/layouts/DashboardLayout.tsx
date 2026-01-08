@@ -1,5 +1,9 @@
-import { Outlet, useNavigate } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
+import Breadcrumbs, {
+  BreadcrumbProvider,
+  useBreadcrumbItems,
+} from "../components/Breadcrumbs";
 import { Selector } from "../components/Selectors";
 import { CurrencyProvider } from "../components/CurrencyContext";
 import { SelectionProvider } from "../components/SelectionContext";
@@ -7,6 +11,18 @@ import { version } from "../../package.json";
 import { get } from "../utils/apiClient";
 import { useAuth } from "../components/AuthContext";
 import PrimaryNavigation from "./PrimaryNavigation";
+import { getBreadcrumbs } from "../utils/navigation";
+
+function LayoutBreadcrumbs() {
+  const location = useLocation();
+  const items = useBreadcrumbItems();
+  const defaults = useMemo(
+    () => getBreadcrumbs(location.pathname),
+    [location.pathname],
+  );
+  const displayItems = items.length > 0 ? items : defaults;
+  return <Breadcrumbs items={displayItems} />;
+}
 
 export default function DashboardLayout() {
   const navigate = useNavigate();
@@ -88,63 +104,66 @@ export default function DashboardLayout() {
         setAccount={setAccount}
         setGroup={setGroup}
       >
-        <div className={`app-shell ${isSidebarOpen ? "" : "sidebar-collapsed"}`}>
-          <header className="top-nav">
-            <div className="logo-area">
-              <button
-                type="button"
-                className="icon-button"
-                onClick={() => setIsSidebarOpen((prev) => !prev)}
-                aria-label={isSidebarOpen ? "Hide navigation" : "Show navigation"}
-              >
-                {isSidebarOpen ? "×" : "☰"}
-              </button>
-              <div className="logo">Firecash</div>
-            </div>
-            <div className="nav-actions">
-              <span className="user-indicator">
-                {userName ? `Signed in as ${userName}` : "Signed in"}
-              </span>
-              <Selector
-                label="Account"
-                value={account}
-                options={stableAccountOptions}
-                onChange={setAccount}
-              />
-              <Selector
-                label="Group"
-                value={group}
-                options={stableGroupOptions}
-                onChange={setGroup}
-              />
-              <Selector
-                label="Currency"
-                value={currency}
-                options={["USD", "EUR", "GBP", "JPY", "HKD"]}
-                onChange={setCurrency}
-              />
-              <button
-                type="button"
-                className="pill"
-                onClick={() => {
-                  logout();
-                  navigate("/login");
-                }}
-              >
-                Log out
-              </button>
-            </div>
-          </header>
-          {isSidebarOpen && (
-            <aside className="sidebar">
-              <PrimaryNavigation />
-            </aside>
-          )}
-          <main className="content">
-            <Outlet />
-          </main>
-          <div className="version-badge">v{version}</div>
-        </div>
+        <BreadcrumbProvider>
+          <div className={`app-shell ${isSidebarOpen ? "" : "sidebar-collapsed"}`}>
+            <header className="top-nav">
+              <div className="logo-area">
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={() => setIsSidebarOpen((prev) => !prev)}
+                  aria-label={isSidebarOpen ? "Hide navigation" : "Show navigation"}
+                >
+                  {isSidebarOpen ? "×" : "☰"}
+                </button>
+                <div className="logo">Firecash</div>
+              </div>
+              <div className="nav-actions">
+                <span className="user-indicator">
+                  {userName ? `Signed in as ${userName}` : "Signed in"}
+                </span>
+                <Selector
+                  label="Account"
+                  value={account}
+                  options={stableAccountOptions}
+                  onChange={setAccount}
+                />
+                <Selector
+                  label="Group"
+                  value={group}
+                  options={stableGroupOptions}
+                  onChange={setGroup}
+                />
+                <Selector
+                  label="Currency"
+                  value={currency}
+                  options={["USD", "EUR", "GBP", "JPY", "HKD"]}
+                  onChange={setCurrency}
+                />
+                <button
+                  type="button"
+                  className="pill"
+                  onClick={() => {
+                    logout();
+                    navigate("/login");
+                  }}
+                >
+                  Log out
+                </button>
+              </div>
+            </header>
+            {isSidebarOpen && (
+              <aside className="sidebar">
+                <PrimaryNavigation />
+              </aside>
+            )}
+            <main className="content">
+              <LayoutBreadcrumbs />
+              <Outlet />
+            </main>
+            <div className="version-badge">v{version}</div>
+          </div>
+        </BreadcrumbProvider>
       </SelectionProvider>
     </CurrencyProvider>
   );

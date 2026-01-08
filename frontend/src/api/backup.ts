@@ -51,14 +51,15 @@ export type BackupPayload = {
   preferences: Array<{ key: string; value: unknown }>;
 };
 
-export async function exportBackup(format: "json" | "csv", includePii: boolean) {
-  if (format === "csv") {
-    const csv = await get<string>(`/api/backup/export?format=csv&include_pii=${includePii}`, {
-      headers: { Accept: "text/csv" },
-    });
-    return new Blob([csv], { type: "text/csv" });
-  }
+export async function exportBackupJson(includePii: boolean) {
   return get<BackupPayload>(`/api/backup/export?format=json&include_pii=${includePii}`);
+}
+
+export async function exportBackupCsv(includePii: boolean) {
+  const csv = await get<string>(`/api/backup/export?format=csv&include_pii=${includePii}`, {
+    headers: { Accept: "text/csv" },
+  });
+  return new Blob([csv], { type: "text/csv" });
 }
 
 export async function restoreBackup(payload: BackupPayload) {

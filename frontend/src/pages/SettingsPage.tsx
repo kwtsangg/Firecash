@@ -3,7 +3,7 @@ import ActionToast, { ActionToastData } from "../components/ActionToast";
 import LoadingState from "../components/LoadingState";
 import Modal from "../components/Modal";
 import { useAuth } from "../components/AuthContext";
-import { exportBackup, restoreBackup, type BackupPayload } from "../api/backup";
+import { exportBackupCsv, exportBackupJson, restoreBackup, type BackupPayload } from "../api/backup";
 import { fetchAuditLogs, type AuditLogEntry } from "../api/audit";
 import {
   addAccountGroupUser,
@@ -319,7 +319,7 @@ export default function SettingsPage() {
               onClick={async () => {
                 setIsBackupBusy(true);
                 try {
-                  const backup = await exportBackup("json", includePii);
+                  const backup = await exportBackupJson(includePii);
                   downloadFile(
                     new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" }),
                     "firecash-backup.json",
@@ -340,7 +340,7 @@ export default function SettingsPage() {
               onClick={async () => {
                 setIsBackupBusy(true);
                 try {
-                  const csvBlob = await exportBackup("csv", includePii);
+                  const csvBlob = await exportBackupCsv(includePii);
                   downloadFile(csvBlob, "firecash-transactions.csv");
                   showToast("CSV ready", "Transactions export has been downloaded.");
                 } catch (error) {

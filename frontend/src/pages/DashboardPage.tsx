@@ -184,12 +184,7 @@ export default function DashboardPage() {
         if (!isMounted) {
           return;
         }
-        const hasAnyData =
-          accountsResponse.length > 0 ||
-          transactionsResponse.length > 0 ||
-          historyResponse.length > 0 ||
-          totalsResponse !== null;
-        if (!hasAnyData) {
+        if (failures.length === results.length) {
           setError("Unable to load dashboard data.");
           return;
         }
@@ -567,6 +562,8 @@ export default function DashboardPage() {
           Math.abs(incomeByPeriod.previous)) *
         100;
   const netIncomeTrend = `${netIncomeTrendValue >= 0 ? "+" : ""}${netIncomeTrendValue.toFixed(1)}%`;
+  const isEmptyDashboard =
+    accounts.length === 0 && assets.length === 0 && transactions.length === 0;
 
   if (isLoading) {
     return (
@@ -584,6 +581,131 @@ export default function DashboardPage() {
           <button className="pill" type="button" onClick={loadData}>
             Retry
           </button>
+        </div>
+      </section>
+    );
+  }
+
+  if (isEmptyDashboard) {
+    return (
+      <section className="page">
+        <header className="page-header">
+          <div>
+            <h1>{pageTitles.dashboard}</h1>
+            <p className="muted">Overview of your asset growth and daily performance.</p>
+          </div>
+          <div className="toolbar">
+            <button className="pill primary" onClick={() => setIsTransactionOpen(true)}>
+              Add Transaction
+            </button>
+          </div>
+        </header>
+        <Modal
+          title="Add transaction"
+          description="Log income or expenses to keep your net worth accurate."
+          isOpen={isTransactionOpen}
+          onClose={() => setIsTransactionOpen(false)}
+          footer={
+            <>
+              <button className="pill" type="button" onClick={() => setIsTransactionOpen(false)}>
+                Cancel
+              </button>
+              <button className="pill primary" type="button" onClick={handleSaveTransaction}>
+                Save Transaction
+              </button>
+            </>
+          }
+        >
+          <div className="form-grid">
+            <label>
+              Account
+              <select
+                value={transactionAccount}
+                onChange={(event) => setTransactionAccount(event.target.value)}
+              >
+                {accountOptions.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Type
+              <select
+                value={transactionType}
+                onChange={(event) => setTransactionType(event.target.value)}
+              >
+                <option value="Income">Income</option>
+                <option value="Expense">Expense</option>
+              </select>
+            </label>
+            <label>
+              Amount
+              <input
+                type="number"
+                value={transactionAmount}
+                onChange={(event) => setTransactionAmount(event.target.value)}
+                placeholder="0.00"
+              />
+            </label>
+            <label>
+              Currency
+              <select
+                value={transactionCurrency}
+                onChange={(event) => setTransactionCurrency(event.target.value)}
+              >
+                {supportedCurrencies.map((currency) => (
+                  <option key={currency} value={currency}>
+                    {currency}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Category
+              <select
+                value={transactionCategory}
+                onChange={(event) => setTransactionCategory(event.target.value)}
+                disabled={isPreferencesLoading}
+              >
+                {categories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Date
+              <input
+                type="date"
+                value={transactionDate}
+                onChange={(event) => setTransactionDate(event.target.value)}
+              />
+            </label>
+            <label className="full-width">
+              Notes
+              <textarea
+                rows={3}
+                value={transactionNotes}
+                onChange={(event) => setTransactionNotes(event.target.value)}
+                placeholder="Optional details"
+              />
+            </label>
+            {preferencesError ? (
+              <p className="input-helper">{preferencesError}</p>
+            ) : null}
+          </div>
+        </Modal>
+        <div className="card">
+          <EmptyState
+            title="No dashboard data yet"
+            description="Add accounts and log your first transactions to populate charts and insights."
+            actionLabel="Add transaction"
+            actionHint="Start with an income or expense entry."
+            onAction={() => setIsTransactionOpen(true)}
+          />
         </div>
       </section>
     );

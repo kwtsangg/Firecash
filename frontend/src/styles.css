@@ -590,15 +590,18 @@ textarea:focus-visible,
 }
 
 .candlestick-chart .chart-axis-text {
-  font-size: 3.2px;
+  font-size: 4.6px;
+  font-weight: 600;
 }
 
 .candlestick-chart .chart-axis-title.y {
-  left: 4px;
+  left: 8px;
+  font-size: 10px;
 }
 
 .candlestick-chart .chart-axis-title.x {
-  bottom: 4px;
+  bottom: 6px;
+  font-size: 10px;
 }
 
 .chart-crosshair {
@@ -642,7 +645,7 @@ textarea:focus-visible,
   font-size: 3.6px;
   paint-order: stroke;
   stroke: rgba(12, 14, 24, 0.8);
-  stroke-width: 1.1px;
+  stroke-width: 0.7px;
 }
 
 .chart-grid-major {

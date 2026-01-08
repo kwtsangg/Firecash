@@ -4,8 +4,10 @@ import { useAuth } from "../components/AuthContext";
 import { ApiError, post } from "../utils/apiClient";
 import { getFriendlyErrorMessage } from "../utils/errorMessages";
 import { pageTitles } from "../utils/pageTitles";
+import { usePageTitle } from "../utils/pageMeta";
 
 export default function LoginPage() {
+  usePageTitle(pageTitles.login);
   const navigate = useNavigate();
   const { login } = useAuth();
   const [email, setEmail] = useState("");

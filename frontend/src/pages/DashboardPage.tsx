@@ -17,6 +17,7 @@ import { get, post } from "../utils/apiClient";
 import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
 import { formatDateDisplay, getDefaultRange, toDateInputValue, toIsoDateTime } from "../utils/date";
 import { pageTitles } from "../utils/pageTitles";
+import { usePageMeta } from "../utils/pageMeta";
 
 type Account = {
   id: string;
@@ -97,6 +98,7 @@ type TransactionDisplay = {
 const chartPalette = ["#7f5bff", "#5b6cff", "#43d6b1", "#f7b955", "#ff7aa2"];
 
 export default function DashboardPage() {
+  usePageMeta({ title: pageTitles.dashboard });
   const { currency: displayCurrency } = useCurrency();
   const { account: selectedAccount, group: selectedGroup } = useSelection();
   const [range, setRange] = useState<DateRange>(() => getDefaultRange(90));

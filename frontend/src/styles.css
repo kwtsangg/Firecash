@@ -3,9 +3,9 @@
   font-family: "Inter", "Segoe UI", system-ui, sans-serif;
   background: #0f111a;
   color: #f5f6ff;
-  --text-muted: #c1c7dd;
-  --focus-ring: #7f5bff;
-  --focus-shadow: rgba(127, 91, 255, 0.35);
+  --text-muted: #d2d8f0;
+  --focus-ring: #a186ff;
+  --focus-shadow: rgba(161, 134, 255, 0.45);
 }
 
 * {
@@ -105,7 +105,7 @@ textarea:focus-visible,
   padding: 12px 16px;
   margin-bottom: 8px;
   border-radius: 12px;
-  color: #b7bdd1;
+  color: #d1d7ef;
 }
 
 .nav-link.active {
@@ -120,6 +120,7 @@ textarea:focus-visible,
 .breadcrumbs {
   font-size: 14px;
   color: var(--text-muted);
+  margin-bottom: 12px;
 }
 
 .breadcrumbs ol {
@@ -784,6 +785,12 @@ textarea:focus-visible,
   gap: 8px;
 }
 
+.empty-state-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .empty-state-note {
   font-size: 12px;
   color: var(--text-muted);
@@ -900,6 +907,41 @@ textarea:focus-visible,
   text-align: center;
   padding: 24px;
   color: #d5d9e8;
+}
+
+.loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  text-align: left;
+}
+
+.loading-state-inline {
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(15, 18, 30, 0.6);
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+}
+
+.loading-spinner {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--focus-ring);
+  animation: spin 1s linear infinite;
+}
+
+.loading-state-title {
+  margin: 0 0 6px;
+  font-weight: 600;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .loading-skeleton {

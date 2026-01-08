@@ -22,6 +22,7 @@ import {
 } from "../utils/date";
 import { getFriendlyErrorMessage } from "../utils/errorMessages";
 import { pageTitles } from "../utils/pageTitles";
+import { usePageMeta } from "../utils/pageMeta";
 
 type Account = {
   id: string;
@@ -73,6 +74,7 @@ type TransactionRow = {
 };
 
 export default function TransactionsPage() {
+  usePageMeta({ title: pageTitles.transactions });
   const { currency: displayCurrency } = useCurrency();
   const { account: selectedAccount, group: selectedGroup } = useSelection();
   const [toast, setToast] = useState<ActionToastData | null>(null);

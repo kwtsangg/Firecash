@@ -25,12 +25,12 @@ export default function App() {
         }
       >
         <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/stocks" element={<StocksPage />} />
-        <Route path="/stocks/market" element={<StockMarketPage />} />
-        <Route path="/transactions" element={<TransactionsPage />} />
         <Route path="/accounts" element={<AccountsPage />} />
+        <Route path="/transactions" element={<TransactionsPage />} />
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/stocks" element={<StocksPage />} />
+        <Route path="/stocks/market" element={<StockMarketPage />} />
       </Route>
     </Routes>
   );

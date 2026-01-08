@@ -1,6 +1,8 @@
 pub mod account_groups;
 pub mod accounts;
 pub mod assets;
+pub mod backup;
+pub mod admin;
 pub mod metrics;
 pub mod preferences;
 pub mod recurring_transactions;

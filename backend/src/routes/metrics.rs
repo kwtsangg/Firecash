@@ -3,6 +3,7 @@ use chrono::{Duration, Utc};
 use sqlx::Row;
 
 use crate::{
+    audit::record_audit_event,
     auth::AuthenticatedUser,
     models::{CurrencyTotal, FxRate, HistoryPoint, TotalsResponse},
     services::forex::refresh_fx_rates,
@@ -15,13 +16,23 @@ pub async fn totals(
 ) -> Result<Json<TotalsResponse>, (axum::http::StatusCode, String)> {
     let transaction_totals = sqlx::query(
         r#"
+        WITH accessible_accounts AS (
+            SELECT id
+            FROM accounts
+            WHERE user_id = $1
+            UNION
+            SELECT agm.account_id
+            FROM account_group_members agm
+            INNER JOIN account_group_users agu ON agm.group_id = agu.group_id
+            WHERE agu.user_id = $1
+        )
         SELECT t.currency_code,
                COALESCE(SUM(
                     CASE WHEN t.transaction_type = 'income' THEN t.amount ELSE -t.amount END
                ), 0.0) as total
         FROM transactions t
         INNER JOIN accounts a ON t.account_id = a.id
-        WHERE a.user_id = $1
+        WHERE t.account_id IN (SELECT id FROM accessible_accounts)
         GROUP BY t.currency_code
         "#,
     )
@@ -32,7 +43,17 @@ pub async fn totals(
 
     let asset_totals = sqlx::query(
         r#"
-        WITH latest_prices AS (
+        WITH accessible_accounts AS (
+            SELECT id
+            FROM accounts
+            WHERE user_id = $1
+            UNION
+            SELECT agm.account_id
+            FROM account_group_members agm
+            INNER JOIN account_group_users agu ON agm.group_id = agu.group_id
+            WHERE agu.user_id = $1
+        ),
+        latest_prices AS (
             SELECT ph.asset_id,
                    ph.price,
                    ph.recorded_at,
@@ -46,7 +67,7 @@ pub async fn totals(
         FROM assets a
         INNER JOIN accounts ac ON a.account_id = ac.id
         LEFT JOIN latest_prices lp ON lp.asset_id = a.id
-        WHERE ac.user_id = $1
+        WHERE a.account_id IN (SELECT id FROM accessible_accounts)
         GROUP BY a.currency_code
         "#,
     )
@@ -132,12 +153,23 @@ pub async fn history(
 
     let records = sqlx::query_as::<_, HistoryPoint>(
         r#"
+        WITH accessible_accounts AS (
+            SELECT id
+            FROM accounts
+            WHERE user_id = $1
+            UNION
+            SELECT agm.account_id
+            FROM account_group_members agm
+            INNER JOIN account_group_users agu ON agm.group_id = agu.group_id
+            WHERE agu.user_id = $1
+        )
         SELECT DATE(t.occurred_at) as date, COALESCE(SUM(
             CASE WHEN t.transaction_type = 'income' THEN t.amount ELSE -t.amount END
         ), 0.0) as value
         FROM transactions t
         INNER JOIN accounts a ON t.account_id = a.id
-        WHERE a.user_id = $1 AND t.occurred_at >= $2
+        WHERE t.account_id IN (SELECT id FROM accessible_accounts)
+          AND t.occurred_at >= $2
         GROUP BY DATE(t.occurred_at)
         ORDER BY DATE(t.occurred_at)
         "#,
@@ -174,10 +206,17 @@ pub async fn fx_rates(
 
 pub async fn refresh_fx(
     State(state): State<AppState>,
-    _user: AuthenticatedUser,
+    user: AuthenticatedUser,
 ) -> Result<StatusCode, (axum::http::StatusCode, String)> {
-    refresh_fx_rates(&state.pool)
-        .await
-        .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+    if let Err(err) = refresh_fx_rates(&state.pool).await {
+        let _ = record_audit_event(
+            &state.pool,
+            Some(user.id),
+            "worker.error",
+            serde_json::json!({ "worker": "fx_rates", "error": err.to_string() }),
+        )
+        .await;
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, err.to_string()));
+    }
     Ok(StatusCode::NO_CONTENT)
 }

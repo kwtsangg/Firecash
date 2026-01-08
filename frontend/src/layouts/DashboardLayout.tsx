@@ -33,7 +33,9 @@ export default function DashboardLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [accountOptions, setAccountOptions] = useState<string[]>(["All Accounts"]);
   const [groupOptions, setGroupOptions] = useState<string[]>(["All Groups"]);
-  const [userName, setUserName] = useState<string | null>(null);
+  const [userLabel, setUserLabel] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [cacheNotice, setCacheNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -62,16 +64,40 @@ export default function DashboardLayout() {
   }, []);
 
   useEffect(() => {
+    const handleOnline = () => {
+      setIsOffline(false);
+      setCacheNotice(null);
+    };
+    const handleOffline = () => {
+      setIsOffline(true);
+    };
+    const handleCache = (event: Event) => {
+      const detail = (event as CustomEvent).detail as { path?: string } | undefined;
+      setCacheNotice(detail?.path ?? "cached data");
+    };
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    window.addEventListener("firecash:offline-cache", handleCache);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("firecash:offline-cache", handleCache);
+    };
+  }, []);
+
+  useEffect(() => {
     let isMounted = true;
     const loadProfile = async () => {
       try {
-        const profile = await get<{ name: string }>("/api/me");
+        const profile = await get<{ name: string; email: string }>("/api/me");
         if (isMounted) {
-          setUserName(profile.name);
+          const label = profile.name?.trim() || profile.email?.trim() || null;
+          setUserLabel(label);
         }
       } catch (error) {
         if (isMounted) {
-          setUserName(null);
+          setUserLabel(null);
         }
       }
     };
@@ -116,12 +142,14 @@ export default function DashboardLayout() {
                 >
                   {isSidebarOpen ? "×" : "☰"}
                 </button>
-                <div className="logo">Firecash</div>
+                <div className="logo-stack">
+                  <div className="logo">Firecash</div>
+                  <span className="user-indicator">
+                    {userLabel ? `Signed in as ${userLabel}` : "Signed in"}
+                  </span>
+                </div>
               </div>
               <div className="nav-actions">
-                <span className="user-indicator">
-                  {userName ? `Signed in as ${userName}` : "Signed in"}
-                </span>
                 <Selector
                   label="Account"
                   value={account}
@@ -152,6 +180,16 @@ export default function DashboardLayout() {
                 </button>
               </div>
             </header>
+            {(isOffline || cacheNotice) && (
+              <div className="offline-banner" role="status">
+                <strong>{isOffline ? "Offline mode" : "Cached view"}</strong>
+                <span>
+                  {isOffline
+                    ? "We’ll keep you moving with cached data until you reconnect."
+                    : `Showing ${cacheNotice}.`}
+                </span>
+              </div>
+            )}
             {isSidebarOpen && (
               <aside className="sidebar">
                 <PrimaryNavigation />

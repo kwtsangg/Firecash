@@ -59,14 +59,27 @@ pub async fn list_audit_logs(
 
     let entries = rows
         .into_iter()
-        .map(|row| AuditLogEntry {
-            id: row.try_get("id").map_err(crate::auth::internal_error)?,
-            user_id: row.try_get("user_id").map_err(crate::auth::internal_error)?,
-            user_name: row.try_get("user_name").map_err(crate::auth::internal_error)?,
-            user_email: row.try_get("user_email").map_err(crate::auth::internal_error)?,
-            action: row.try_get("action").map_err(crate::auth::internal_error)?,
-            context: row.try_get("context").map_err(crate::auth::internal_error)?,
-            created_at: row.try_get("created_at").map_err(crate::auth::internal_error)?,
+        .map(|row| {
+            let entry = AuditLogEntry {
+                id: row.try_get("id").map_err(crate::auth::internal_error)?,
+                user_id: row.try_get("user_id").map_err(crate::auth::internal_error)?,
+                user_name: row
+                    .try_get("user_name")
+                    .map_err(crate::auth::internal_error)?,
+                user_email: row
+                    .try_get("user_email")
+                    .map_err(crate::auth::internal_error)?,
+                action: row
+                    .try_get("action")
+                    .map_err(crate::auth::internal_error)?,
+                context: row
+                    .try_get("context")
+                    .map_err(crate::auth::internal_error)?,
+                created_at: row
+                    .try_get("created_at")
+                    .map_err(crate::auth::internal_error)?,
+            };
+            Ok(entry)
         })
         .collect::<Result<Vec<_>, _>>()?;
 

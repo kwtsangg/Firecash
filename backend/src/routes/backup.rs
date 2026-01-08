@@ -248,9 +248,12 @@ pub async fn export_backup(
 
     let preferences = prefs_rows
         .into_iter()
-        .map(|row| BackupPreference {
-            key: row.try_get("key").map_err(crate::auth::internal_error)?,
-            value: row.try_get("value").map_err(crate::auth::internal_error)?,
+        .map(|row| {
+            let key = row.try_get("key").map_err(crate::auth::internal_error)?;
+            let value = row
+                .try_get("value")
+                .map_err(crate::auth::internal_error)?;
+            Ok(BackupPreference { key, value })
         })
         .collect::<Result<Vec<_>, _>>()?;
 

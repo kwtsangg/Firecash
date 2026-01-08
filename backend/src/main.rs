@@ -12,7 +12,7 @@ use axum::{
     routing::put,
     Router,
 };
-use axum::{extract::State, http::Request, middleware::Next, response::Response};
+use axum::{body::Body, extract::State, http::Request, middleware::Next, response::Response};
 use sqlx::postgres::PgPoolOptions;
 use std::net::SocketAddr;
 use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
@@ -157,9 +157,7 @@ async fn main() {
                 .put(routes::preferences::update_preferences),
         )
         .layer(CorsLayer::new().allow_origin(Any).allow_headers(Any))
-        .layer(GovernorLayer {
-            config: governor_conf,
-        })
+        .layer(GovernorLayer::new(governor_conf))
         .layer(from_fn_with_state(state.clone(), monitoring_middleware))
         .with_state(state);
 
@@ -180,10 +178,10 @@ async fn health() -> &'static str {
     "ok"
 }
 
-async fn monitoring_middleware<B>(
+async fn monitoring_middleware(
     State(state): State<AppState>,
-    req: Request<B>,
-    next: Next<B>,
+    req: Request<Body>,
+    next: Next,
 ) -> Response {
     let method = req.method().to_string();
     let path = req.uri().path().to_string();

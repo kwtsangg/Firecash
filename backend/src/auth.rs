@@ -120,6 +120,7 @@ pub async fn register(
     State(state): State<AppState>,
     Json(payload): Json<RegisterRequest>,
 ) -> Result<Json<AuthResponse>, (StatusCode, String)> {
+    let email = payload.email.clone();
     let password_hash = hash_password(&payload.password)?;
     let user_id = Uuid::new_v4();
 
@@ -141,7 +142,7 @@ pub async fn register(
         &state.pool,
         Some(user_id),
         "user.register",
-        serde_json::json!({ "email": payload.email }),
+        serde_json::json!({ "email": email }),
     )
     .await;
 
@@ -153,6 +154,7 @@ pub async fn login(
     State(state): State<AppState>,
     Json(payload): Json<LoginRequest>,
 ) -> Result<Json<AuthResponse>, (StatusCode, String)> {
+    let email = payload.email.clone();
     let record = sqlx::query(
         r#"
         SELECT id, password_hash
@@ -176,7 +178,7 @@ pub async fn login(
         &state.pool,
         Some(user_id),
         "user.login",
-        serde_json::json!({ "email": payload.email }),
+        serde_json::json!({ "email": email }),
     )
     .await;
 

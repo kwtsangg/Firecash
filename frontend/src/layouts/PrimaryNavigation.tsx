@@ -1,18 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { pageTitles } from "../utils/pageTitles";
-
-const primarySections = [
-  { label: pageTitles.accounts, to: "/accounts" },
-  { label: pageTitles.transactions, to: "/transactions" },
-  { label: pageTitles.reports, to: "/reports" },
-  { label: pageTitles.settings, to: "/settings" },
-];
-
-const secondarySections = [
-  { label: pageTitles.dashboard, to: "/dashboard" },
-  { label: pageTitles.stocks, to: "/stocks" },
-  { label: pageTitles.stockMarket, to: "/stocks/market" },
-];
+import { navigationSections } from "../utils/navigation";
 
 type NavSectionProps = {
   title: string;
@@ -39,8 +26,9 @@ function NavSection({ title, items }: NavSectionProps) {
 export default function PrimaryNavigation() {
   return (
     <nav className="primary-nav" aria-label="Primary">
-      <NavSection title="Core" items={primarySections} />
-      <NavSection title="Explore" items={secondarySections} />
+      {navigationSections.map((section) => (
+        <NavSection key={section.title} title={section.title} items={section.items} />
+      ))}
     </nav>
   );
 }

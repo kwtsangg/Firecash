@@ -1,6 +1,104 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import EmptyState from "../components/EmptyState";
+import KpiCard from "../components/KpiCard";
+import LoadingState from "../components/LoadingState";
+import { useCurrency } from "../components/CurrencyContext";
+import { ReportSnapshot, fetchReportSnapshot } from "../api/reports";
+import { convertAmount, formatCurrency } from "../utils/currency";
+import { formatDateDisplay } from "../utils/date";
 import { pageTitles } from "../utils/pageTitles";
+import { usePageMeta } from "../utils/pageMeta";
 
 export default function ReportsPage() {
+  usePageMeta({ title: pageTitles.reports });
+  const navigate = useNavigate();
+  const { currency: displayCurrency } = useCurrency();
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [snapshot, setSnapshot] = useState<ReportSnapshot | null>(null);
+
+  const loadReports = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetchReportSnapshot();
+      setSnapshot(response);
+    } catch (err) {
+      setError("Unable to load reports right now.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadReports();
+  }, [loadReports]);
+
+  const accounts = snapshot?.accounts ?? [];
+  const transactions = snapshot?.transactions ?? [];
+  const totals = snapshot?.totals;
+
+  const recentTransactions = useMemo(() => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    return transactions.filter((transaction) => new Date(transaction.occurred_at) >= cutoff);
+  }, [transactions]);
+
+  const { income, expenses } = useMemo(() => {
+    return recentTransactions.reduce(
+      (acc, transaction) => {
+        const amount = convertAmount(transaction.amount, transaction.currency_code, displayCurrency);
+        if (transaction.transaction_type === "income") {
+          acc.income += amount;
+        } else {
+          acc.expenses += amount;
+        }
+        return acc;
+      },
+      { income: 0, expenses: 0 },
+    );
+  }, [displayCurrency, recentTransactions]);
+
+  const netChange = income - expenses;
+  const totalAssets = totals
+    ? convertAmount(totals.total, totals.currency_code, displayCurrency)
+    : null;
+
+  const latestTransactions = useMemo(() => {
+    return [...transactions]
+      .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))
+      .slice(0, 5);
+  }, [transactions]);
+
+  const hasAccounts = accounts.length > 0;
+  const hasTransactions = transactions.length > 0;
+
+  if (isLoading) {
+    return (
+      <section className="page">
+        <LoadingState
+          title="Loading reports"
+          description="Summarizing accounts, balances, and activity."
+          className="card"
+        />
+      </section>
+    );
+  }
+
+  if (error) {
+    return (
+      <section className="page">
+        <div className="card page-state error">
+          <p>{error}</p>
+          <button className="pill" type="button" onClick={loadReports}>
+            Retry
+          </button>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="page">
       <header className="page-header">
@@ -12,9 +110,84 @@ export default function ReportsPage() {
           Export report
         </button>
       </header>
-      <div className="card page-state empty-state">
-        No reports generated yet. Run a report to see insights here.
-      </div>
+      {!hasAccounts && !hasTransactions ? (
+        <EmptyState
+          title="No reports yet"
+          description="Create an account and add transactions to build your first report."
+          actionLabel="Create account"
+          onAction={() => navigate("/accounts")}
+          secondaryActionLabel="Import transactions"
+          onSecondaryAction={() => navigate("/transactions")}
+          actionHint="Track balances to unlock report summaries."
+          secondaryActionHint="Bring in a CSV or log transactions manually."
+        />
+      ) : (
+        <>
+          <div className="card-grid">
+            <KpiCard
+              label="Total assets"
+              value={totalAssets === null ? "—" : formatCurrency(totalAssets, displayCurrency)}
+              footnote="Across all accounts"
+            />
+            <KpiCard
+              label="Net cashflow"
+              value={formatCurrency(netChange, displayCurrency)}
+              footnote="Last 30 days"
+              trend={netChange >= 0 ? "Positive" : "Negative"}
+            />
+            <KpiCard
+              label="Income"
+              value={formatCurrency(income, displayCurrency)}
+              footnote="Last 30 days"
+            />
+            <KpiCard
+              label="Expenses"
+              value={formatCurrency(expenses, displayCurrency)}
+              footnote="Last 30 days"
+            />
+          </div>
+          <div className="card list-card">
+            <div className="list-row list-header columns-4">
+              <span>Date</span>
+              <span>Type</span>
+              <span>Amount ({displayCurrency})</span>
+              <span>Notes</span>
+            </div>
+            {latestTransactions.length === 0 ? (
+              <EmptyState
+                title="No activity to summarize"
+                description="Recent transactions appear here once you log activity."
+                actionLabel="Add transaction"
+                onAction={() => navigate("/transactions")}
+                actionHint="Capture income, expenses, and transfers to grow reports."
+              />
+            ) : (
+              latestTransactions.map((transaction) => (
+                <div
+                  className="list-row columns-4"
+                  key={transaction.id}
+                >
+                  <span>{formatDateDisplay(transaction.occurred_at.split("T")[0])}</span>
+                  <span>
+                    {transaction.transaction_type === "income" ? "Income" : "Expense"}
+                  </span>
+                  <span>
+                    {formatCurrency(
+                      convertAmount(
+                        transaction.amount,
+                        transaction.currency_code,
+                        displayCurrency,
+                      ),
+                      displayCurrency,
+                    )}
+                  </span>
+                  <span>{transaction.description ?? "—"}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      )}
     </section>
   );
 }

@@ -24,6 +24,12 @@ export const navigationSections: NavigationSection[] = [
     ],
   },
   {
+    title: "Platform",
+    items: [
+      { label: pageTitles.integrations, to: "/integrations" },
+    ],
+  },
+  {
     title: "Explore",
     items: [
       { label: pageTitles.stocks, to: "/stocks" },
@@ -38,6 +44,7 @@ const breadcrumbRoutes: BreadcrumbRoute[] = [
   { label: pageTitles.transactions, to: "/transactions" },
   { label: pageTitles.reports, to: "/reports" },
   { label: pageTitles.settings, to: "/settings" },
+  { label: pageTitles.integrations, to: "/integrations" },
   { label: pageTitles.stocks, to: "/stocks" },
   { label: pageTitles.stockMarket, to: "/stocks/market", parent: "/stocks" },
 ];

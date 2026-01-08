@@ -4,12 +4,14 @@ use argon2::{
 };
 use axum::{
     extract::{FromRequestParts, State},
-    http::{request::Parts, StatusCode},
+    http::{request::Parts, Method, StatusCode},
     Json,
 };
 use chrono::{Duration, Utc};
+use hex::encode as hex_encode;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
@@ -90,6 +92,7 @@ impl FromRequestParts<AppState> for AuthenticatedUser {
         state: &AppState,
     ) -> impl std::future::Future<Output = Result<Self, Self::Rejection>> + Send {
         let jwt_secret = state.jwt_secret.clone();
+        let pool = state.pool.clone();
         async move {
             let auth_header = parts
                 .headers
@@ -101,17 +104,62 @@ impl FromRequestParts<AppState> for AuthenticatedUser {
                 .strip_prefix("Bearer ")
                 .ok_or((StatusCode::UNAUTHORIZED, "Invalid auth header".into()))?;
 
-            let claims = decode::<Claims>(
+            if let Ok(claims) = decode::<Claims>(
                 token,
                 &DecodingKey::from_secret(jwt_secret.as_bytes()),
                 &Validation::default(),
+            ) {
+                let id = Uuid::parse_str(&claims.claims.sub)
+                    .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid user id".into()))?;
+                return Ok(Self {
+                    id,
+                });
+            }
+
+            if !token.starts_with("fc_") {
+                return Err((StatusCode::UNAUTHORIZED, "Invalid token".into()));
+            }
+
+            let token_hash = hash_api_token(token);
+            let record = sqlx::query(
+                r#"
+                SELECT id, user_id, is_read_only
+                FROM api_keys
+                WHERE (token_hash = $1 OR token = $2)
+                  AND revoked_at IS NULL
+                  AND (expires_at IS NULL OR expires_at > NOW())
+                "#,
             )
-            .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token".into()))?;
+            .bind(&token_hash)
+            .bind(token)
+            .fetch_optional(&pool)
+            .await
+            .map_err(internal_error)?;
 
-            let id = Uuid::parse_str(&claims.claims.sub)
-                .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid user id".into()))?;
+            let Some(record) = record else {
+                return Err((StatusCode::UNAUTHORIZED, "Invalid token".into()));
+            };
 
-            Ok(Self { id })
+            let user_id: Uuid = record.try_get("user_id").map_err(internal_error)?;
+            let is_read_only: bool = record.try_get("is_read_only").map_err(internal_error)?;
+            let token_id: Uuid = record.try_get("id").map_err(internal_error)?;
+
+            let _ = sqlx::query(
+                r#"
+                UPDATE api_keys
+                SET last_used_at = NOW()
+                WHERE id = $1
+                "#,
+            )
+            .bind(token_id)
+            .execute(&pool)
+            .await;
+
+            if is_read_only && !is_read_only_method(&parts.method) {
+                return Err((StatusCode::FORBIDDEN, "Read-only token".into()));
+            }
+
+            Ok(Self { id: user_id })
         }
     }
 }
@@ -324,6 +372,16 @@ fn hash_password(password: &str) -> Result<String, (StatusCode, String)> {
         .hash_password(password.as_bytes(), &salt)
         .map_err(internal_error)?;
     Ok(hash.to_string())
+}
+
+fn is_read_only_method(method: &Method) -> bool {
+    matches!(method, &Method::GET | &Method::HEAD | &Method::OPTIONS)
+}
+
+pub fn hash_api_token(token: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    hex_encode(hasher.finalize())
 }
 
 fn verify_password(password: &str, hash: &str) -> Result<(), (StatusCode, String)> {

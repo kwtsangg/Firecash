@@ -66,6 +66,20 @@ type AssetPrice = {
   recorded_at: string | null;
 };
 
+type AssetPerformance = {
+  asset_id: string;
+  symbol: string;
+  quantity: number;
+  currency_code: string;
+  start_price: number | null;
+  latest_price: number | null;
+  start_at: string | null;
+  latest_at: string | null;
+  return_pct: number | null;
+  benchmark_label: string;
+  benchmark_return: number | null;
+};
+
 type Candle = {
   date: string;
   open: number;
@@ -180,6 +194,9 @@ export default function StocksPage() {
   const [isPreferencesLoading, setIsPreferencesLoading] = useState(true);
   const [preferencesError, setPreferencesError] = useState<string | null>(null);
   const [lastPriceUpdate, setLastPriceUpdate] = useState<string | null>(null);
+  const [performanceMetrics, setPerformanceMetrics] = useState<AssetPerformance[]>([]);
+  const [assetDataSource, setAssetDataSource] = useState("stooq");
+  const [assetRefreshCadence, setAssetRefreshCadence] = useState("daily");
 
   const loadData = useCallback(async () => {
     let isMounted = true;
@@ -194,6 +211,7 @@ export default function StocksPage() {
           assetsResponse,
           historyResponse,
           pricesResponse,
+          performanceResponse,
           transactionsResponse,
         ] = await Promise.all([
           get<Account[]>("/api/accounts"),
@@ -202,6 +220,7 @@ export default function StocksPage() {
           get<Asset[]>("/api/assets"),
           get<HistoryPoint[]>("/api/history"),
           get<AssetPrice[]>("/api/assets/prices"),
+          get<AssetPerformance[]>("/api/assets/performance"),
           get<Transaction[]>("/api/transactions"),
         ]);
         if (!isMounted) {
@@ -262,6 +281,7 @@ export default function StocksPage() {
         setMemberships(membershipResponse);
         setHoldings(mappedHoldings);
         setHistory(historyResponse);
+        setPerformanceMetrics(performanceResponse);
         setTransactions(transactionsResponse);
         setHoldingAccount(accountsResponse[0]?.name ?? "");
       } catch (err) {
@@ -298,6 +318,8 @@ export default function StocksPage() {
       setStrategies(response.strategies);
       setHoldingStrategies(response.holdingStrategies);
       setHoldingStrategy(response.strategies[0] ?? "Long Term");
+      setAssetDataSource(response.assetDataSource);
+      setAssetRefreshCadence(response.assetRefreshCadence);
     } catch (err) {
       setPreferencesError("Unable to load strategies right now.");
     } finally {
@@ -796,6 +818,22 @@ export default function StocksPage() {
   const lastPriceLabel = lastPriceUpdate
     ? new Date(lastPriceUpdate).toLocaleString()
     : "Not yet";
+  const dataSourceLabelMap: Record<string, string> = {
+    stooq: "Stooq pricing",
+    manual: "Manual uploads",
+    broker: "Broker APIs",
+    custom: "Custom feed",
+  };
+  const dataSourceLabel = dataSourceLabelMap[assetDataSource] ?? "Custom feed";
+  const formatPercent = (value: number | null) => {
+    if (value === null || Number.isNaN(value)) {
+      return "—";
+    }
+    const percent = value * 100;
+    return `${percent >= 0 ? "+" : ""}${percent.toFixed(1)}%`;
+  };
+  const benchmarkLabel = performanceMetrics[0]?.benchmark_label ?? "Benchmark";
+  const benchmarkReturn = performanceMetrics[0]?.benchmark_return ?? null;
 
   return (
     <section className="page">
@@ -803,7 +841,8 @@ export default function StocksPage() {
         <div>
           <h1>{pageTitles.stocks}</h1>
           <p className="muted">Track holdings, dividends, and live price momentum.</p>
-          <p className="muted">Price source: Stooq.</p>
+          <p className="muted">Price source: {dataSourceLabel}.</p>
+          <p className="muted">Refresh cadence: {assetRefreshCadence}.</p>
           <p className="muted">Last price refresh: {lastPriceLabel}.</p>
         </div>
         <div className="toolbar">
@@ -1118,6 +1157,33 @@ export default function StocksPage() {
           trend={dayChangeTrend}
           footnote="market open"
         />
+      </div>
+      <div className="card">
+        <h3>Performance vs benchmark</h3>
+        <p className="muted">
+          Returns compare the first and latest price snapshots for each holding.
+        </p>
+        {performanceMetrics.length === 0 ? (
+          <p className="muted">No performance data yet.</p>
+        ) : (
+          <div className="table compact">
+            <div className="table-row table-header columns-3">
+              <span>Asset</span>
+              <span>Return</span>
+              <span>{benchmarkLabel}</span>
+            </div>
+            {performanceMetrics.map((metric) => (
+              <div className="table-row columns-3" key={metric.asset_id}>
+                <span>{metric.symbol}</span>
+                <span>{formatPercent(metric.return_pct)}</span>
+                <span>{formatPercent(benchmarkReturn)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="muted small">
+          Benchmark data is a composite based on your holdings’ start and latest pricing.
+        </p>
       </div>
       <div className="card">
         <h3>Action center</h3>

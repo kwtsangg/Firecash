@@ -4,6 +4,7 @@ export const pageTitles = {
   transactions: "Transactions",
   reports: "Reports",
   settings: "Settings",
+  integrations: "Integrations",
   stocks: "Stocks",
   stockMarket: "Market",
   login: "Welcome back",

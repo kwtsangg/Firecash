@@ -1,12 +1,14 @@
 # Firecash
 
-Firecash is a self-hosted asset tracker that combines a Rust API, a modern React dashboard, and a Postgres database. The backend tracks accounts, assets, transactions, and metrics, while a background worker is intended to ingest market prices and FX rates. The frontend is a polished dashboard with date-range filtering, charts, and account selectors wired to the API.
+Firecash is a self-hosted asset tracker that combines a Rust API, a modern React dashboard, and a Postgres database. The backend tracks accounts, assets, transactions, and metrics, and a background worker refreshes recurring transactions, asset prices (Stooq), and optional FX rates (exchangerate.host). The frontend ships a polished dashboard with date-range filtering, charts, account selectors, and integrations management wired to the API.
 
 ## Features
-- **Rust API (Axum + SQLx)** with JWT auth, accounts, groups, assets, transactions, and metrics endpoints.
-- **React + Vite dashboard** with KPI cards, charts, and modern layout styling.
-- **Background worker** for scheduled price and FX refresh tasks.
-- **Postgres 18** with migrations for the initial schema.
+- **Rust API (Axum + SQLx)** with JWT auth, accounts, account groups, assets, transactions, recurring transactions, metrics, and preferences.
+- **React + Vite dashboard** with KPI cards, charts, stocks, market overview, reports, and settings.
+- **Background worker** that posts recurring transactions and refreshes prices (Stooq) plus FX rates (exchangerate.host with `FX_ACCESS_KEY`).
+- **Integrations + API tokens** for external providers, with audit logging.
+- **Backup & restore** (JSON and CSV exports) from the settings UI.
+- **Postgres 18** with migrations for the core schema.
 - **Docker Compose** for local orchestration.
 
 ## Product goals & status
@@ -15,14 +17,17 @@ Firecash is a self-hosted asset tracker that combines a Rust API, a modern React
 | --- | --- |
 | Track stock prices and include them in totals | ✅ Asset prices are stored in `price_history` and included in totals. |
 | Log periodic income/expense | ✅ Recurring transactions can be scheduled via API. |
-| Modern UI with charts and date-range filtering | ✅ Dashboard includes KPIs, charts, and date-range selector. |
+| Modern UI with charts and date-range filtering | ✅ Dashboard, stocks, and reports include charts and filters. |
 | Multiple accounts with grouping | ✅ Accounts and account groups supported in API. |
-| Multi-currency support | ✅ Currency codes are stored per account/transaction/asset, totals include currency breakdowns. |
-| REST API for database-backed truth + future API keys | 🔄 API key scaffolding exists; access control is JWT for now. |
+| Multi-currency support | ✅ Currency codes are stored per account/transaction/asset, totals include currency breakdowns (FX refresh optional). |
+| Daily expense tracking views | 🔄 Transactions are captured, but daily-focused insights are still missing. |
+| Benchmark portfolio vs S&P 500 | 🔄 Asset performance uses a composite benchmark, SPX comparison is not wired yet. |
+| REST API for database-backed truth + API tokens | ✅ JWT auth plus read-only/full API tokens are available. |
 
 ## Missing / next up
-- Replace the placeholder worker logic with real market data ingestion for equities and FX.
-- Expand reports with API-backed insights and export flows.
+- Expand reports with richer insights (category breakdowns, trend deltas, and export flows).
+- Add daily expense tracking views (today/timeline, budget vs actual, streaks).
+- Build portfolio benchmark comparisons (S&P 500/SPY) and growth curves.
 - Add reconciliation and import tools (CSV/OFX) for transactions.
 
 ## Quick start (Docker)
@@ -118,11 +123,35 @@ All API routes are prefixed with `/api` and require a JWT from `/api/login` (exc
 - `GET /api/history`
 - `GET /api/fx-rates`
 
+### Assets (market data)
+- `GET /api/assets/prices`
+- `GET /api/assets/performance`
+- `GET /api/assets/price-status`
+- `POST /api/assets/refresh-prices`
+- `GET /api/assets/candles?symbol=SPY`
+
+### Integrations
+- `GET /api/integrations`
+- `POST /api/integrations`
+- `GET /api/integrations/catalog`
+- `GET /api/integrations/:id/logs`
+
+### Preferences & tokens
+- `GET /api/preferences`
+- `PUT /api/preferences`
+- `GET /api/tokens`
+- `POST /api/tokens`
+- `POST /api/tokens/:id/revoke`
+
+### Backups
+- `GET /api/backup/export?format=json`
+- `POST /api/backup/restore`
+
 ## Database migrations
 
 Migrations live in `backend/migrations`. The API boots with `sqlx::migrate!()` and will apply them automatically when `DATABASE_URL` is reachable.
 
 ## Notes
 
-- The worker is a placeholder scaffold for stock and FX ingestion; hook it up to your preferred data provider.
+- The worker already ingests Stooq prices and optional FX rates; set `FX_ACCESS_KEY` to enable FX refresh.
 - The frontend lockfile (`frontend/package-lock.json`) is committed for reproducible installs.

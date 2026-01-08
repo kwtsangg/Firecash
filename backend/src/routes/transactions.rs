@@ -24,6 +24,8 @@ pub struct TransactionQueryParams {
     pub account_group_id: Option<Uuid>,
     pub transaction_type: Option<String>,
     pub currency_code: Option<String>,
+    pub category: Option<String>,
+    pub merchant: Option<String>,
 }
 
 pub async fn list_transactions(
@@ -36,7 +38,7 @@ pub async fn list_transactions(
     let mut query = QueryBuilder::new(
         r#"
         SELECT t.id, t.account_id, t.amount, t.currency_code, t.transaction_type,
-               t.description, t.occurred_at
+               t.category, t.merchant, t.description, t.occurred_at
         FROM transactions t
         INNER JOIN accounts a ON t.account_id = a.id
         WHERE a.user_id =
@@ -80,6 +82,16 @@ pub async fn list_transactions(
     if let Some(currency_code) = params.currency_code {
         query.push(" AND t.currency_code = ");
         query.push_bind(currency_code);
+    }
+
+    if let Some(category) = params.category {
+        query.push(" AND t.category = ");
+        query.push_bind(category);
+    }
+
+    if let Some(merchant) = params.merchant {
+        query.push(" AND t.merchant ILIKE ");
+        query.push_bind(format!("%{}%", merchant));
     }
 
     query.push(" ORDER BY t.occurred_at DESC");
@@ -126,10 +138,12 @@ pub async fn create_transaction(
     let record = sqlx::query_as::<_, Transaction>(
         r#"
         INSERT INTO transactions (
-            id, account_id, amount, currency_code, transaction_type, description, occurred_at
+            id, account_id, amount, currency_code, transaction_type, category, merchant, description,
+            occurred_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING id, account_id, amount, currency_code, transaction_type, description, occurred_at
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING id, account_id, amount, currency_code, transaction_type, category, merchant,
+                  description, occurred_at
         "#,
     )
     .bind(id)
@@ -137,6 +151,8 @@ pub async fn create_transaction(
     .bind(payload.amount)
     .bind(payload.currency_code)
     .bind(payload.transaction_type)
+    .bind(payload.category.unwrap_or_else(|| "Uncategorized".into()))
+    .bind(payload.merchant)
     .bind(payload.description)
     .bind(payload.occurred_at)
     .fetch_one(&state.pool)
@@ -198,17 +214,21 @@ pub async fn update_transaction(
             amount = COALESCE($2, amount),
             currency_code = COALESCE($3, currency_code),
             transaction_type = COALESCE($4, transaction_type),
-            description = COALESCE($5, description),
-            occurred_at = COALESCE($6, occurred_at)
-        WHERE id = $7
+            category = COALESCE($5, category),
+            merchant = COALESCE($6, merchant),
+            description = COALESCE($7, description),
+            occurred_at = COALESCE($8, occurred_at)
+        WHERE id = $9
         RETURNING id, account_id, amount, currency_code, transaction_type,
-                  description, occurred_at
+                  category, merchant, description, occurred_at
         "#,
     )
     .bind(payload.account_id)
     .bind(payload.amount)
     .bind(payload.currency_code)
     .bind(payload.transaction_type)
+    .bind(payload.category)
+    .bind(payload.merchant)
     .bind(payload.description)
     .bind(payload.occurred_at)
     .bind(transaction_id)

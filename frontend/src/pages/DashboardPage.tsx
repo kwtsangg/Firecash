@@ -15,13 +15,7 @@ import {
 import { fetchPreferences } from "../api/preferences";
 import { get, post } from "../utils/apiClient";
 import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
-import {
-  formatDateDisplay,
-  getDefaultRange,
-  startOfMonth,
-  toDateInputValue,
-  toIsoDateTime,
-} from "../utils/date";
+import { formatDateDisplay, getDefaultRange, toDateInputValue, toIsoDateTime } from "../utils/date";
 import { pageTitles } from "../utils/pageTitles";
 
 type Account = {
@@ -109,7 +103,6 @@ export default function DashboardPage() {
   const [toast, setToast] = useState<ActionToastData | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
   const [isTransactionOpen, setIsTransactionOpen] = useState(false);
-  const [isBudgetOpen, setIsBudgetOpen] = useState(false);
   const [transactionAccount, setTransactionAccount] = useState("");
   const [transactionType, setTransactionType] = useState("Income");
   const [transactionAmount, setTransactionAmount] = useState("");
@@ -118,9 +111,6 @@ export default function DashboardPage() {
   const [transactionCurrency, setTransactionCurrency] = useState("USD");
   const [categories, setCategories] = useState<string[]>([]);
   const [transactionCategory, setTransactionCategory] = useState("General");
-  const [budgetCategory, setBudgetCategory] = useState("Housing");
-  const [budgetAmount, setBudgetAmount] = useState("");
-  const [budgetStart, setBudgetStart] = useState(() => toDateInputValue(startOfMonth(new Date())));
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [groups, setGroups] = useState<AccountGroup[]>([]);
   const [memberships, setMemberships] = useState<AccountGroupMembership[]>([]);
@@ -135,8 +125,6 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [isPreferencesLoading, setIsPreferencesLoading] = useState(true);
   const [preferencesError, setPreferencesError] = useState<string | null>(null);
-
-  const budgetCategories = ["Housing", "Investing", "Lifestyle", "Bills"];
 
   const loadData = useCallback(async () => {
     let isMounted = true;
@@ -698,62 +686,6 @@ export default function DashboardPage() {
               placeholder="Salary, rent, dividends..."
               value={transactionNotes}
               onChange={(event) => setTransactionNotes(event.target.value)}
-            />
-          </label>
-        </div>
-      </Modal>
-      <Modal
-        title="Set budget"
-        description="Plan monthly targets for a specific category."
-        isOpen={isBudgetOpen}
-        onClose={() => setIsBudgetOpen(false)}
-        footer={
-          <>
-            <button className="pill" type="button" onClick={() => setIsBudgetOpen(false)}>
-              Cancel
-            </button>
-            <button
-              className="pill primary"
-              type="button"
-              onClick={() => {
-                setIsBudgetOpen(false);
-                showToast("Budget saved", "Your target has been updated.");
-              }}
-            >
-              Save Budget
-            </button>
-          </>
-        }
-      >
-        <div className="form-grid">
-          <label>
-            Category
-            <select
-              value={budgetCategory}
-              onChange={(event) => setBudgetCategory(event.target.value)}
-            >
-              {budgetCategories.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Monthly amount
-            <input
-              type="number"
-              placeholder="0.00"
-              value={budgetAmount}
-              onChange={(event) => setBudgetAmount(event.target.value)}
-            />
-          </label>
-          <label>
-            Start date
-            <input
-              type="date"
-              value={budgetStart}
-              onChange={(event) => setBudgetStart(event.target.value)}
             />
           </label>
         </div>

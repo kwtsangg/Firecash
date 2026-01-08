@@ -1,6 +1,6 @@
 # Firecash
 
-Firecash is a self-hosted asset tracker that combines a Rust API, a modern React dashboard, and a Postgres database. The backend tracks accounts, assets, transactions, and metrics, while a background worker is intended to ingest market prices and FX rates. The frontend is a polished dashboard with date-range filtering, charts, and account selectors.
+Firecash is a self-hosted asset tracker that combines a Rust API, a modern React dashboard, and a Postgres database. The backend tracks accounts, assets, transactions, and metrics, while a background worker is intended to ingest market prices and FX rates. The frontend is a polished dashboard with date-range filtering, charts, and account selectors wired to the API.
 
 ## Features
 - **Rust API (Axum + SQLx)** with JWT auth, accounts, groups, assets, transactions, and metrics endpoints.
@@ -21,9 +21,9 @@ Firecash is a self-hosted asset tracker that combines a Rust API, a modern React
 | REST API for database-backed truth + future API keys | 🔄 API key scaffolding exists; access control is JWT for now. |
 
 ## Missing / next up
-- Wire the frontend to live API data (currently UI uses static mock data).
 - Replace the placeholder worker logic with real market data ingestion for equities and FX.
-- Add UI workflows for account groups, recurring transactions, and asset price refresh triggers.
+- Expand reports with API-backed insights and export flows.
+- Add reconciliation and import tools (CSV/OFX) for transactions.
 
 ## Quick start (Docker)
 

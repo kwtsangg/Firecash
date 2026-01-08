@@ -626,7 +626,7 @@ export default function AccountsPage() {
                   ? "No accounts yet"
                   : "No accounts match this view"
               }
-              description="Accounts store balances and power transactions, budgets, and performance insights."
+              description="Accounts store balances and power transactions and performance insights."
               actionLabel="Add account"
               actionHint="Create your first account to begin tracking."
               onAction={() => setIsAccountOpen(true)}

@@ -130,23 +130,17 @@ export default function DashboardPage() {
   const [isPreferencesLoading, setIsPreferencesLoading] = useState(true);
   const [preferencesError, setPreferencesError] = useState<string | null>(null);
 
+  const showToast = useCallback((title: string, description?: string) => {
+    setToast({ title, description });
+  }, []);
+
   const loadData = useCallback(async () => {
     let isMounted = true;
     const run = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        const [
-          accountsResponse,
-          groupsResponse,
-          membershipResponse,
-          assetsResponse,
-          transactionsResponse,
-          historyResponse,
-          totalsResponse,
-          priceStatusResponse,
-          fxRatesResponse,
-        ] = await Promise.all([
+        const results = await Promise.allSettled([
           get<Account[]>("/api/accounts"),
           fetchAccountGroups(),
           fetchAccountGroupMemberships(),
@@ -157,6 +151,49 @@ export default function DashboardPage() {
           get<AssetPriceStatus>("/api/assets/price-status"),
           get<FxRate[]>("/api/fx-rates"),
         ]);
+        const failures: string[] = [];
+        const resolve = <T,>(result: PromiseSettledResult<T>, fallback: T, label: string) => {
+          if (result.status === "fulfilled") {
+            return result.value;
+          }
+          failures.push(label);
+          return fallback;
+        };
+        const accountsResponse = resolve(results[0], [] as Account[], "accounts");
+        const groupsResponse = resolve(results[1], [] as AccountGroup[], "groups");
+        const membershipResponse = resolve(
+          results[2],
+          [] as AccountGroupMembership[],
+          "memberships",
+        );
+        const assetsResponse = resolve(results[3], [] as Asset[], "assets");
+        const transactionsResponse = resolve(
+          results[4],
+          [] as Transaction[],
+          "transactions",
+        );
+        const historyResponse = resolve(results[5], [] as HistoryPoint[], "history");
+        const totalsResponse = resolve(results[6], null as TotalsResponse | null, "totals");
+        const priceStatusResponse = resolve(
+          results[7],
+          null as AssetPriceStatus | null,
+          "price status",
+        );
+        const fxRatesResponse = resolve(results[8], [] as FxRate[], "fx rates");
+
+        const criticalFailures = failures.filter((item) =>
+          ["accounts", "transactions", "history", "totals"].includes(item),
+        );
+        if (criticalFailures.length > 0) {
+          throw new Error("critical");
+        }
+
+        if (failures.length > 0) {
+          showToast(
+            "Some data is unavailable",
+            `We could not load: ${failures.join(", ")}.`,
+          );
+        }
         if (!isMounted) {
           return;
         }
@@ -196,7 +233,7 @@ export default function DashboardPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [showToast]);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
@@ -382,9 +419,6 @@ export default function DashboardPage() {
       .sort((a, b) => a.quote_currency.localeCompare(b.quote_currency));
   }, [fxRates]);
 
-  const showToast = (title: string, description?: string) => {
-    setToast({ title, description });
-  };
 
   const handleRefreshPrices = async () => {
     try {

@@ -171,7 +171,7 @@ export function LineChart({
   } Z`;
 
   return (
-    <div className="line-chart" ref={wrapperRef}>
+    <div className="line-chart candlestick-chart" ref={wrapperRef}>
       <svg
         viewBox="0 0 100 100"
         className="chart-svg"
@@ -440,8 +440,8 @@ export function CandlestickChart({
   const max = Math.max(...values);
   const min = Math.min(...values);
   const range = max - min || 1;
-  const paddingX = showAxisLabels ? 12 : 6;
-  const paddingY = showAxisLabels ? 12 : 8;
+  const paddingX = showAxisLabels ? 14 : 6;
+  const paddingY = showAxisLabels ? 14 : 8;
   const plotWidth = 100 - paddingX * 2;
   const plotHeight = 100 - paddingY * 2;
   const valuePadding = range === 0 ? Math.max(1, Math.abs(max) * 0.1) : range * 0.08;
@@ -534,7 +534,7 @@ export function CandlestickChart({
   }, [tooltip]);
 
   return (
-    <div className="line-chart" ref={wrapperRef}>
+    <div className="line-chart candlestick-chart" ref={wrapperRef}>
       <svg
         viewBox="0 0 100 100"
         className="chart-svg"
@@ -670,7 +670,7 @@ export function CandlestickChart({
               <text
                 key={`x-${item.label}-${index}`}
                 x={item.position}
-                y="98"
+                y="96"
                 className="chart-axis-text"
                 textAnchor="middle"
               >

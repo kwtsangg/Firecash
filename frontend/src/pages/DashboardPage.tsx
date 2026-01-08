@@ -181,11 +181,17 @@ export default function DashboardPage() {
         );
         const fxRatesResponse = resolve(results[8], [] as FxRate[], "fx rates");
 
-        const criticalFailures = failures.filter((item) =>
-          ["accounts", "transactions", "history", "totals"].includes(item),
-        );
-        if (criticalFailures.length > 0) {
-          throw new Error("critical");
+        if (!isMounted) {
+          return;
+        }
+        const hasAnyData =
+          accountsResponse.length > 0 ||
+          transactionsResponse.length > 0 ||
+          historyResponse.length > 0 ||
+          totalsResponse !== null;
+        if (!hasAnyData) {
+          setError("Unable to load dashboard data.");
+          return;
         }
 
         if (failures.length > 0) {
@@ -193,9 +199,6 @@ export default function DashboardPage() {
             "Some data is unavailable",
             `We could not load: ${failures.join(", ")}.`,
           );
-        }
-        if (!isMounted) {
-          return;
         }
         const accountMap = new Map(accountsResponse.map((item) => [item.id, item.name]));
         const mappedTransactions = transactionsResponse.map((item) => ({

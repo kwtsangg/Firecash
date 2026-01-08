@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import EmptyState from "../components/EmptyState";
@@ -11,6 +12,7 @@ import {
   fetchAccountGroups,
 } from "../api/accountGroups";
 import { fetchPreferences } from "../api/preferences";
+import { fetchTransactions } from "../api/transactions";
 import { del, get, post, put } from "../utils/apiClient";
 import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
 import {
@@ -45,6 +47,8 @@ type Transaction = {
   amount: number;
   currency_code: string;
   transaction_type: string;
+  category: string;
+  merchant: string | null;
   description: string | null;
   occurred_at: string;
 };
@@ -68,6 +72,7 @@ type TransactionRow = {
   account: string;
   type: string;
   category: string;
+  merchant: string;
   amount: number;
   currency: string;
   status: string;
@@ -86,6 +91,7 @@ export default function TransactionsPage() {
   const [transactionDate, setTransactionDate] = useState(() => toDateInputValue(new Date()));
   const [transactionCurrency, setTransactionCurrency] = useState("USD");
   const [transactionCategory, setTransactionCategory] = useState("General");
+  const [transactionMerchant, setTransactionMerchant] = useState("");
   const [categories, setCategories] = useState<string[]>([]);
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
@@ -109,11 +115,16 @@ export default function TransactionsPage() {
   const [pendingEdits, setPendingEdits] = useState<Record<string, Partial<TransactionRow>>>({});
   const [isEditMode, setIsEditMode] = useState(false);
   const [isReviewOpen, setIsReviewOpen] = useState(false);
+  const [bulkCategory, setBulkCategory] = useState("");
+  const [bulkMerchant, setBulkMerchant] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isFiltering, setIsFiltering] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPreferencesLoading, setIsPreferencesLoading] = useState(true);
   const [preferencesError, setPreferencesError] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const categoryFilter = searchParams.get("category") ?? "All";
+  const merchantFilter = searchParams.get("merchant") ?? "";
 
   const loadData = useCallback(async () => {
     let isMounted = true;
@@ -131,7 +142,10 @@ export default function TransactionsPage() {
           get<Account[]>("/api/accounts"),
           fetchAccountGroups(),
           fetchAccountGroupMemberships(),
-          get<Transaction[]>("/api/transactions"),
+          fetchTransactions<Transaction[]>({
+            category: categoryFilter !== "All" ? categoryFilter : undefined,
+            merchant: merchantFilter || undefined,
+          }),
           get<RecurringTransaction[]>("/api/recurring-transactions"),
         ]);
         if (!isMounted) {
@@ -151,7 +165,8 @@ export default function TransactionsPage() {
             date: transaction.occurred_at.split("T")[0],
             account: accountMap.get(transaction.account_id) ?? "Unknown",
             type: transaction.transaction_type === "income" ? "Income" : "Expense",
-            category: "Uncategorized",
+            category: transaction.category ?? "Uncategorized",
+            merchant: transaction.merchant ?? "",
             amount: transaction.amount,
             currency: transaction.currency_code,
             status: "Cleared",
@@ -171,7 +186,7 @@ export default function TransactionsPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [categoryFilter, merchantFilter]);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
@@ -236,7 +251,7 @@ export default function TransactionsPage() {
     setIsFiltering(true);
     const timer = window.setTimeout(() => setIsFiltering(false), 350);
     return () => window.clearTimeout(timer);
-  }, [isLoading, range.from, range.to, selectedAccount, selectedGroup]);
+  }, [isLoading, range.from, range.to, selectedAccount, selectedGroup, categoryFilter, merchantFilter]);
 
   useEffect(() => {
     if (!categories.includes(transactionCategory)) {
@@ -252,7 +267,12 @@ export default function TransactionsPage() {
       return false;
     }
     const rowDate = parseDateInput(row.date);
-    return rowDate >= parseDateInput(range.from) && rowDate <= parseDateInput(range.to);
+    const matchesDate =
+      rowDate >= parseDateInput(range.from) && rowDate <= parseDateInput(range.to);
+    const matchesCategory = categoryFilter === "All" || row.category === categoryFilter;
+    const matchesMerchant = !merchantFilter
+      || row.merchant.toLowerCase().includes(merchantFilter.toLowerCase());
+    return matchesDate && matchesCategory && matchesMerchant;
   });
   const transactionTotal = filteredTransactions.reduce((sum, row) => {
     const signedAmount = row.type === "Expense" ? -row.amount : row.amount;
@@ -272,6 +292,7 @@ export default function TransactionsPage() {
         merged.accountId === row.accountId &&
         merged.type === row.type &&
         merged.category === row.category &&
+        merged.merchant === row.merchant &&
         merged.amount === row.amount &&
         merged.currency === row.currency;
       if (isUnchanged) {
@@ -293,6 +314,35 @@ export default function TransactionsPage() {
       }
       return next;
     });
+  };
+
+  const applyBulkUpdates = () => {
+    if (selectedTransactions.size === 0) {
+      showToast("Select transactions", "Choose entries to apply bulk updates.");
+      return;
+    }
+    if (!bulkCategory && !bulkMerchant.trim()) {
+      showToast("No bulk changes", "Choose a category or merchant to apply.");
+      return;
+    }
+    const updates: Partial<TransactionRow> = {};
+    if (bulkCategory) {
+      updates.category = bulkCategory;
+    }
+    if (bulkMerchant.trim()) {
+      updates.merchant = bulkMerchant.trim();
+    }
+    setPendingEdits((prev) => {
+      const next = { ...prev };
+      selectedTransactions.forEach((id) => {
+        const row = transactions.find((item) => item.id === id);
+        if (row) {
+          next[id] = { ...row, ...prev[id], ...updates };
+        }
+      });
+      return next;
+    });
+    showToast("Bulk updates staged", "Review changes before applying.");
   };
 
   const pendingEditsList = Object.entries(pendingEdits);
@@ -339,6 +389,12 @@ export default function TransactionsPage() {
             if (updates.type) {
               payload.transaction_type = updates.type.toLowerCase();
             }
+            if (updates.category) {
+              payload.category = updates.category;
+            }
+            if (updates.merchant !== undefined) {
+              payload.merchant = updates.merchant.trim() ? updates.merchant.trim() : null;
+            }
             if (updates.date) {
               payload.occurred_at = toIsoDateTime(updates.date);
             }
@@ -382,6 +438,7 @@ export default function TransactionsPage() {
       account: accountName,
       type: transactionType,
       category: transactionCategory,
+      merchant: transactionMerchant.trim(),
       amount,
       currency: transactionCurrency,
       status: "Pending",
@@ -389,12 +446,15 @@ export default function TransactionsPage() {
     setTransactions((prev) => [optimisticRow, ...prev]);
     setIsTransactionOpen(false);
     setTransactionAmount("");
+    setTransactionMerchant("");
     try {
       const created = await post<Transaction>("/api/transactions", {
         account_id: transactionAccount,
         amount,
         currency_code: transactionCurrency,
         transaction_type: transactionType.toLowerCase(),
+        category: transactionCategory,
+        merchant: transactionMerchant.trim() ? transactionMerchant.trim() : null,
         description: null,
         occurred_at: toIsoDateTime(transactionDate),
       });
@@ -408,6 +468,7 @@ export default function TransactionsPage() {
                 account: accountName,
                 type: created.transaction_type === "income" ? "Income" : "Expense",
                 category: transactionCategory,
+                merchant: transactionMerchant.trim(),
                 amount: created.amount,
                 currency: created.currency_code,
                 status: "Cleared",
@@ -741,6 +802,15 @@ export default function TransactionsPage() {
             ) : null}
           </label>
           <label>
+            Merchant
+            <input
+              type="text"
+              placeholder="Merchant or payee"
+              value={transactionMerchant}
+              onChange={(event) => setTransactionMerchant(event.target.value)}
+            />
+          </label>
+          <label>
             Occurred on
             <input
               type="date"
@@ -895,6 +965,7 @@ export default function TransactionsPage() {
                           {row?.account ?? "Transaction"} on {formatDateDisplay(row?.date ?? "")}
                           {updates.amount !== undefined ? ` → ${updates.amount}` : ""}
                           {updates.category ? `, ${updates.category}` : ""}
+                          {updates.merchant !== undefined ? `, ${updates.merchant || "No merchant"}` : ""}
                         </li>
                       );
                     })}
@@ -1029,12 +1100,88 @@ export default function TransactionsPage() {
             </>
           ) : null}
         </div>
-        <div className={`list-row list-header ${isEditMode ? "columns-7" : "columns-6"}`}>
+        <div className="filter-bar">
+          <label>
+            Category
+            <select
+              value={categoryFilter}
+              onChange={(event) => {
+                const next = new URLSearchParams(searchParams);
+                const value = event.target.value;
+                if (value === "All") {
+                  next.delete("category");
+                } else {
+                  next.set("category", value);
+                }
+                setSearchParams(next, { replace: true });
+              }}
+            >
+              <option value="All">All categories</option>
+              {categories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Merchant
+            <input
+              type="text"
+              placeholder="Search merchants"
+              value={merchantFilter}
+              onChange={(event) => {
+                const next = new URLSearchParams(searchParams);
+                const value = event.target.value;
+                if (value) {
+                  next.set("merchant", value);
+                } else {
+                  next.delete("merchant");
+                }
+                setSearchParams(next, { replace: true });
+              }}
+            />
+          </label>
+        </div>
+        {isEditMode ? (
+          <div className="bulk-edit">
+            <div className="bulk-edit-fields">
+              <label>
+                Bulk category
+                <select
+                  value={bulkCategory}
+                  onChange={(event) => setBulkCategory(event.target.value)}
+                >
+                  <option value="">Select category</option>
+                  {categories.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Bulk merchant
+                <input
+                  type="text"
+                  placeholder="Merchant label"
+                  value={bulkMerchant}
+                  onChange={(event) => setBulkMerchant(event.target.value)}
+                />
+              </label>
+            </div>
+            <button className="pill" type="button" onClick={applyBulkUpdates}>
+              Stage bulk changes
+            </button>
+          </div>
+        ) : null}
+        <div className={`list-row list-header ${isEditMode ? "columns-8" : "columns-7"}`}>
           {isEditMode ? <span /> : null}
           <span>Date</span>
           <span>Account</span>
           <span>Type</span>
           <span>Category</span>
+          <span>Merchant</span>
           <span>Amount ({displayCurrency})</span>
           <span>Status</span>
         </div>
@@ -1060,7 +1207,7 @@ export default function TransactionsPage() {
               const isEdited = Boolean(pending);
               return (
                 <div
-                  className={`list-row ${isEditMode ? "columns-7" : "columns-6"} ${
+                  className={`list-row ${isEditMode ? "columns-8" : "columns-7"} ${
                     isSelected ? "row-selected" : ""
                   } ${isEdited ? "row-edited" : ""}`}
                   key={row.id}
@@ -1128,7 +1275,7 @@ export default function TransactionsPage() {
                       row.type
                     )}
                   </span>
-                  <span>
+                <span>
                     {isEditMode ? (
                       <select
                         value={pending?.category ?? row.category}
@@ -1144,6 +1291,19 @@ export default function TransactionsPage() {
                       </select>
                     ) : (
                       row.category
+                    )}
+                  </span>
+                  <span>
+                    {isEditMode ? (
+                      <input
+                        type="text"
+                        value={pending?.merchant ?? row.merchant}
+                        onChange={(event) =>
+                          updatePending(row, { merchant: event.target.value })
+                        }
+                      />
+                    ) : (
+                      row.merchant || "—"
                     )}
                   </span>
                   <span className="amount-cell">
@@ -1173,8 +1333,9 @@ export default function TransactionsPage() {
                 </div>
               );
             })}
-            <div className={`list-row ${isEditMode ? "columns-7" : "columns-6"} summary-row`}>
+            <div className={`list-row ${isEditMode ? "columns-8" : "columns-7"} summary-row`}>
               <span>Total</span>
+              <span>-</span>
               <span>-</span>
               <span>-</span>
               <span>-</span>

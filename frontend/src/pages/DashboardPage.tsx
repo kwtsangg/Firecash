@@ -50,6 +50,8 @@ type Transaction = {
   amount: number;
   currency_code: string;
   transaction_type: string;
+  category: string;
+  merchant: string | null;
   description: string | null;
   occurred_at: string;
 };
@@ -166,7 +168,7 @@ export default function DashboardPage() {
           amount: item.amount,
           currency: item.currency_code,
           date: item.occurred_at.split("T")[0],
-          category: "Uncategorized",
+          category: item.category ?? "Uncategorized",
           notes: item.description ?? "Manual entry",
         }));
 
@@ -433,6 +435,8 @@ export default function DashboardPage() {
         amount,
         currency_code: transactionCurrency,
         transaction_type: transactionType.toLowerCase(),
+        category: transactionCategory,
+        merchant: null,
         description: transactionNotes || null,
         occurred_at: toIsoDateTime(transactionDate),
       });

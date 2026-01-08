@@ -62,6 +62,8 @@ pub struct Transaction {
     pub amount: f64,
     pub currency_code: String,
     pub transaction_type: String,
+    pub category: String,
+    pub merchant: Option<String>,
     pub description: Option<String>,
     pub occurred_at: DateTime<Utc>,
 }
@@ -72,6 +74,8 @@ pub struct CreateTransactionRequest {
     pub amount: f64,
     pub currency_code: String,
     pub transaction_type: String,
+    pub category: Option<String>,
+    pub merchant: Option<String>,
     pub description: Option<String>,
     pub occurred_at: DateTime<Utc>,
 }
@@ -82,6 +86,8 @@ pub struct UpdateTransactionRequest {
     pub amount: Option<f64>,
     pub currency_code: Option<String>,
     pub transaction_type: Option<String>,
+    pub category: Option<String>,
+    pub merchant: Option<String>,
     pub description: Option<String>,
     pub occurred_at: Option<DateTime<Utc>>,
 }
@@ -93,6 +99,8 @@ pub struct UpdateTransactionResponse {
     pub amount: f64,
     pub currency_code: String,
     pub transaction_type: String,
+    pub category: String,
+    pub merchant: Option<String>,
     pub description: Option<String>,
     pub occurred_at: DateTime<Utc>,
 }

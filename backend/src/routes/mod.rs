@@ -6,6 +6,7 @@ pub mod backup;
 pub mod admin;
 pub mod dashboard;
 pub mod integrations;
+pub mod market;
 pub mod metrics;
 pub mod plugins;
 pub mod preferences;

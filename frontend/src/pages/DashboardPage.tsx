@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
-import { BarChart, DonutChart, LineChart } from "../components/Charts";
+import { LineChart } from "../components/Charts";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import EmptyState from "../components/EmptyState";
 import KpiCard from "../components/KpiCard";
@@ -47,6 +48,28 @@ type Asset = {
   currency_code: string;
 };
 
+type AssetPrice = {
+  asset_id: string;
+  symbol: string;
+  price: number | null;
+  currency_code: string;
+  recorded_at: string | null;
+};
+
+type AssetPerformance = {
+  asset_id: string;
+  symbol: string;
+  quantity: number;
+  currency_code: string;
+  start_price: number | null;
+  latest_price: number | null;
+  start_at: string | null;
+  latest_at: string | null;
+  return_pct: number | null;
+  benchmark_label: string;
+  benchmark_return: number | null;
+};
+
 type Transaction = {
   id: string;
   account_id: string;
@@ -64,6 +87,14 @@ type HistoryPoint = {
   value: number;
 };
 
+type Candle = {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+};
+
 type TotalsResponse = {
   total: number;
   currency_code: string;
@@ -75,13 +106,6 @@ type AssetPriceStatus = {
   total_count: number;
 };
 
-type FxRate = {
-  base_currency: string;
-  quote_currency: string;
-  rate: number;
-  recorded_on: string;
-};
-
 type DashboardResponse = {
   accounts: Account[];
   groups: AccountGroup[];
@@ -91,7 +115,6 @@ type DashboardResponse = {
   history: HistoryPoint[];
   totals: TotalsResponse | null;
   price_status: AssetPriceStatus | null;
-  fx_rates: FxRate[];
 };
 
 type AssetDisplay = {
@@ -99,6 +122,13 @@ type AssetDisplay = {
   amount: number;
   currency: string;
   account: string;
+};
+
+type PriceChange = {
+  changeValue: number | null;
+  changePercent: number | null;
+  latestClose: number | null;
+  previousClose: number | null;
 };
 
 type TransactionDisplay = {
@@ -112,14 +142,15 @@ type TransactionDisplay = {
   notes: string;
 };
 
-const chartPalette = ["#7f5bff", "#5b6cff", "#43d6b1", "#f7b955", "#ff7aa2"];
-
 export default function DashboardPage() {
   usePageMeta({ title: pageTitles.dashboard });
+  const navigate = useNavigate();
   const { currency: displayCurrency } = useCurrency();
   const { account: selectedAccount, group: selectedGroup } = useSelection();
   const [range, setRange] = useState<DateRange>(() => getDefaultRange(90));
   const [toast, setToast] = useState<ActionToastData | null>(null);
+  const [cacheNotice, setCacheNotice] = useState<string | null>(null);
+  const cacheNoticeTimeout = useRef<number | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
   const [isTransactionOpen, setIsTransactionOpen] = useState(false);
   const [transactionAccount, setTransactionAccount] = useState("");
@@ -136,11 +167,13 @@ export default function DashboardPage() {
   const [groups, setGroups] = useState<AccountGroup[]>([]);
   const [memberships, setMemberships] = useState<AccountGroupMembership[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [assetPrices, setAssetPrices] = useState<AssetPrice[]>([]);
+  const [performanceMetrics, setPerformanceMetrics] = useState<AssetPerformance[]>([]);
+  const [priceChanges, setPriceChanges] = useState<Record<string, PriceChange>>({});
   const [transactions, setTransactions] = useState<TransactionDisplay[]>([]);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
   const [totals, setTotals] = useState<TotalsResponse | null>(null);
   const [priceStatus, setPriceStatus] = useState<AssetPriceStatus | null>(null);
-  const [fxRates, setFxRates] = useState<FxRate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isFiltering, setIsFiltering] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -156,15 +189,27 @@ export default function DashboardPage() {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<{ path?: string }>).detail;
       if (detail?.path === "/api/dashboard") {
-        showToast(
-          "Using cached dashboard data",
-          "We are pacing requests to avoid rate limits. We will refresh shortly.",
+        setCacheNotice(
+          "Using cached dashboard data. We are pacing requests to avoid rate limits.",
         );
+        if (cacheNoticeTimeout.current) {
+          window.clearTimeout(cacheNoticeTimeout.current);
+        }
+        cacheNoticeTimeout.current = window.setTimeout(() => {
+          setCacheNotice(null);
+          cacheNoticeTimeout.current = null;
+        }, 8000);
       }
     };
     window.addEventListener("firecash:rate-limit-cache", handler);
-    return () => window.removeEventListener("firecash:rate-limit-cache", handler);
-  }, [showToast]);
+    return () => {
+      window.removeEventListener("firecash:rate-limit-cache", handler);
+      if (cacheNoticeTimeout.current) {
+        window.clearTimeout(cacheNoticeTimeout.current);
+        cacheNoticeTimeout.current = null;
+      }
+    };
+  }, []);
 
   const formatFailureReason = useCallback((error: unknown) => {
     if (error instanceof ApiError) {
@@ -186,6 +231,71 @@ export default function DashboardPage() {
     [],
   );
 
+  const fetchPriceChanges = useCallback(
+    async (symbols: string[]): Promise<Record<string, PriceChange>> => {
+      if (symbols.length === 0) {
+        return {};
+      }
+      const entries = await Promise.all(
+        symbols.map(async (symbol) => {
+          try {
+            const response = await get<{ candles: Candle[] }>(
+              `/api/assets/candles?symbol=${encodeURIComponent(symbol)}`,
+            );
+            const candles = response.candles;
+            if (candles.length < 2) {
+              return [
+                symbol,
+                {
+                  changeValue: null,
+                  changePercent: null,
+                  latestClose: null,
+                  previousClose: null,
+                },
+              ] as const;
+            }
+            const latest = candles[candles.length - 1];
+            const previous = candles[candles.length - 2];
+            if (!previous.close) {
+              return [
+                symbol,
+                {
+                  changeValue: null,
+                  changePercent: null,
+                  latestClose: latest.close,
+                  previousClose: previous.close,
+                },
+              ] as const;
+            }
+            const changeValue = latest.close - previous.close;
+            const changePercent = (changeValue / previous.close) * 100;
+            return [
+              symbol,
+              {
+                changeValue,
+                changePercent,
+                latestClose: latest.close,
+                previousClose: previous.close,
+              },
+            ] as const;
+          } catch (err) {
+            return [
+              symbol,
+              {
+                changeValue: null,
+                changePercent: null,
+                latestClose: null,
+                previousClose: null,
+              },
+            ] as const;
+          }
+        }),
+      );
+      return Object.fromEntries(entries);
+    },
+    [],
+  );
+
   const loadData = useCallback(async () => {
     let isMounted = true;
     const run = async () => {
@@ -194,6 +304,10 @@ export default function DashboardPage() {
       setErrorDetails([]);
       try {
         const dashboardResponse = await get<DashboardResponse>("/api/dashboard");
+        const [pricesResult, performanceResult] = await Promise.allSettled([
+          get<AssetPrice[]>("/api/assets/prices"),
+          get<AssetPerformance[]>("/api/assets/performance"),
+        ]);
         const accountsResponse = Array.isArray(dashboardResponse.accounts)
           ? dashboardResponse.accounts
           : [];
@@ -218,9 +332,14 @@ export default function DashboardPage() {
         const priceStatusResponse = isRecord(dashboardResponse.price_status)
           ? dashboardResponse.price_status
           : null;
-        const normalizedFxRates = Array.isArray(dashboardResponse.fx_rates)
-          ? dashboardResponse.fx_rates
-          : [];
+        const pricesResponse =
+          pricesResult.status === "fulfilled" ? pricesResult.value : [];
+        const performanceResponse =
+          performanceResult.status === "fulfilled" ? performanceResult.value : [];
+        const symbols = Array.from(
+          new Set(assetsResponse.map((asset) => asset.symbol)),
+        );
+        const priceChangeResponse = await fetchPriceChanges(symbols);
 
         if (!isMounted) {
           return;
@@ -242,11 +361,13 @@ export default function DashboardPage() {
         setGroups(groupsResponse);
         setMemberships(membershipResponse);
         setAssets(assetsResponse);
+        setAssetPrices(pricesResponse);
+        setPerformanceMetrics(performanceResponse);
+        setPriceChanges(priceChangeResponse);
         setTransactions(mappedTransactions);
         setHistory(historyResponse);
         setTotals(totalsResponse);
         setPriceStatus(priceStatusResponse);
-        setFxRates(normalizedFxRates);
         setTransactionAccount(accountsResponse[0]?.id ?? "");
       } catch (err) {
         if (isMounted) {
@@ -271,7 +392,7 @@ export default function DashboardPage() {
     return () => {
       isMounted = false;
     };
-  }, [formatFailureReason, isRecord]);
+  }, [fetchPriceChanges, formatFailureReason, isRecord]);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
@@ -363,6 +484,58 @@ export default function DashboardPage() {
   const filteredTransactions = transactions.filter((transaction) =>
     matchesSelection(transaction.account),
   );
+  const accountNameById = useMemo(
+    () => new Map(accounts.map((account) => [account.id, account.name])),
+    [accounts],
+  );
+  const priceByAssetId = useMemo(
+    () => new Map(assetPrices.map((price) => [price.asset_id, price])),
+    [assetPrices],
+  );
+  const performanceByAssetId = useMemo(
+    () => new Map(performanceMetrics.map((metric) => [metric.asset_id, metric])),
+    [performanceMetrics],
+  );
+  const holdings = useMemo(() => {
+    return assets
+      .map((asset) => {
+        const accountName = accountNameById.get(asset.account_id) ?? "Unknown";
+        const priceInfo = priceByAssetId.get(asset.id);
+        const performance = performanceByAssetId.get(asset.id);
+        const currency = priceInfo?.currency_code ?? asset.currency_code;
+        const lastPrice = priceInfo?.price ?? performance?.latest_price ?? null;
+        const avgPrice =
+          performance?.start_price && performance?.latest_price
+            ? (performance.start_price + performance.latest_price) / 2
+            : performance?.start_price ?? performance?.latest_price ?? null;
+        const priceChange = priceChanges[asset.symbol];
+        const marketValue =
+          lastPrice === null
+            ? null
+            : convertAmount(lastPrice * asset.quantity, currency, displayCurrency);
+        return {
+          id: asset.id,
+          symbol: asset.symbol,
+          shares: asset.quantity,
+          account: accountName,
+          currency,
+          lastPrice,
+          avgPrice,
+          changeValue: priceChange?.changeValue ?? null,
+          changePercent: priceChange?.changePercent ?? null,
+          marketValue,
+        };
+      })
+      .filter((holding) => matchesSelection(holding.account));
+  }, [
+    accountNameById,
+    assets,
+    displayCurrency,
+    matchesSelection,
+    performanceByAssetId,
+    priceByAssetId,
+    priceChanges,
+  ]);
 
   const selectionScale = Math.max(0.4, filteredAssets.length / baseAssets.length || 1);
 
@@ -373,10 +546,66 @@ export default function DashboardPage() {
         0,
       );
 
-  const netIncome = filteredTransactions.reduce((sum, transaction) => {
-    const signedAmount = transaction.type === "Expense" ? -transaction.amount : transaction.amount;
-    return sum + convertAmount(signedAmount, transaction.currency, displayCurrency);
-  }, 0);
+  const { monthlyIncome, monthlyExpense, netCashflow } = useMemo(() => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    return filteredTransactions.reduce(
+      (acc, transaction) => {
+        const date = new Date(transaction.date);
+        if (date < cutoff) {
+          return acc;
+        }
+        const amount = convertAmount(
+          transaction.amount,
+          transaction.currency,
+          displayCurrency,
+        );
+        if (transaction.type === "Income") {
+          acc.monthlyIncome += amount;
+        } else {
+          acc.monthlyExpense += amount;
+        }
+        acc.netCashflow += transaction.type === "Income" ? amount : -amount;
+        return acc;
+      },
+      { monthlyIncome: 0, monthlyExpense: 0, netCashflow: 0 },
+    );
+  }, [displayCurrency, filteredTransactions]);
+
+  const netCashflowTrend = useMemo(() => {
+    if (filteredTransactions.length === 0) {
+      return null;
+    }
+    const now = new Date();
+    const currentStart = new Date();
+    currentStart.setDate(now.getDate() - 30);
+    const previousStart = new Date();
+    previousStart.setDate(now.getDate() - 60);
+    const totalsByPeriod = filteredTransactions.reduce(
+      (acc, transaction) => {
+        const date = new Date(transaction.date);
+        const signedAmount =
+          transaction.type === "Income" ? transaction.amount : -transaction.amount;
+        const amount = convertAmount(signedAmount, transaction.currency, displayCurrency);
+        if (date >= currentStart) {
+          acc.current += amount;
+        } else if (date >= previousStart && date < currentStart) {
+          acc.previous += amount;
+        }
+        return acc;
+      },
+      { current: 0, previous: 0 },
+    );
+    const trendValue =
+      totalsByPeriod.previous === 0
+        ? totalsByPeriod.current === 0
+          ? 0
+          : 100
+        : ((totalsByPeriod.current - totalsByPeriod.previous) /
+            Math.abs(totalsByPeriod.previous)) *
+          100;
+    return `${trendValue >= 0 ? "+" : ""}${trendValue.toFixed(1)}%`;
+  }, [displayCurrency, filteredTransactions]);
 
   const lineSeries = useMemo(() => {
     const fromDate = new Date(range.from);
@@ -402,69 +631,14 @@ export default function DashboardPage() {
     });
   }, [history, range.from, range.to, refreshTick, selectionScale, totalAssets]);
 
-  const barValues = useMemo(() => {
-    const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    const now = new Date();
-    const start = new Date(now);
-    start.setDate(now.getDate() - now.getDay());
-    const days = Array.from({ length: 7 }, (_, index) => {
-      const date = new Date(start);
-      date.setDate(start.getDate() + index);
-      return date;
-    });
-    return days.map((day) => {
-      const label = weekdays[day.getDay()];
-      const dateKey = day.toISOString().split("T")[0];
-      const total = filteredTransactions.reduce((sum, transaction) => {
-        if (transaction.date !== dateKey) {
-          return sum;
-        }
-        const signedAmount = transaction.type === "Expense" ? -transaction.amount : transaction.amount;
-        return sum + signedAmount;
-      }, 0);
-      return { label, value: Math.round(total) };
-    });
-  }, [filteredTransactions]);
-
-  const donutValues = useMemo(() => {
-    const totalsByType = new Map<string, number>();
-    filteredTransactions.forEach((transaction) => {
-      const value = Math.abs(
-        convertAmount(transaction.amount, transaction.currency, displayCurrency),
-      );
-      totalsByType.set(
-        transaction.type,
-        (totalsByType.get(transaction.type) ?? 0) + value,
-      );
-    });
-    return Array.from(totalsByType.entries()).map(([label, value], index) => ({
-      label,
-      value,
-      color: chartPalette[index % chartPalette.length],
-    }));
-  }, [displayCurrency, filteredTransactions]);
-
-  const latestFxRates = useMemo(() => {
-    const latestByCurrency = new Map<string, FxRate>();
-    fxRates.forEach((rate) => {
-      const existing = latestByCurrency.get(rate.quote_currency);
-      if (!existing || rate.recorded_on > existing.recorded_on) {
-        latestByCurrency.set(rate.quote_currency, rate);
-      }
-    });
-    return Array.from(latestByCurrency.values())
-      .filter((rate) => rate.base_currency === "USD")
-      .sort((a, b) => a.quote_currency.localeCompare(b.quote_currency));
-  }, [fxRates]);
-
-
   const handleRefreshPrices = async () => {
     try {
       await post<{ updated: number }>("/api/assets/refresh-prices", {});
       const results = await Promise.allSettled([
         get<TotalsResponse>("/api/totals"),
         get<AssetPriceStatus>("/api/assets/price-status"),
-        get<FxRate[]>("/api/fx-rates"),
+        get<AssetPrice[]>("/api/assets/prices"),
+        get<AssetPerformance[]>("/api/assets/performance"),
       ]);
       const failures: string[] = [];
       const resolve = <T,>(result: PromiseSettledResult<T>, fallback: T, label: string) => {
@@ -480,8 +654,12 @@ export default function DashboardPage() {
         null as AssetPriceStatus | null,
         "price status",
       );
-      const fxRatesResponse = resolve(results[2], [] as FxRate[], "fx rates");
-      const normalizedFxRates = Array.isArray(fxRatesResponse) ? fxRatesResponse : [];
+      const pricesResponse = resolve(results[2], [] as AssetPrice[], "asset prices");
+      const performanceResponse = resolve(
+        results[3],
+        [] as AssetPerformance[],
+        "asset performance",
+      );
 
       if (totalsResponse) {
         setTotals(totalsResponse);
@@ -489,7 +667,11 @@ export default function DashboardPage() {
       if (priceStatusResponse) {
         setPriceStatus(priceStatusResponse);
       }
-      setFxRates(normalizedFxRates);
+      setAssetPrices(pricesResponse);
+      setPerformanceMetrics(performanceResponse);
+      const symbols = Array.from(new Set(assets.map((asset) => asset.symbol)));
+      const priceChangeResponse = await fetchPriceChanges(symbols);
+      setPriceChanges(priceChangeResponse);
 
       if (failures.length === results.length) {
         showToast("Price refresh failed", "Unable to sync the latest prices.");
@@ -615,32 +797,7 @@ export default function DashboardPage() {
         100
       : 0;
   const assetTrend = `${assetTrendValue >= 0 ? "+" : ""}${assetTrendValue.toFixed(1)}%`;
-  const midPoint = new Date(
-    (new Date(range.from).getTime() + new Date(range.to).getTime()) / 2,
-  );
-  const incomeByPeriod = filteredTransactions.reduce(
-    (acc, transaction) => {
-      const signedAmount = transaction.type === "Expense" ? -transaction.amount : transaction.amount;
-      const amount = convertAmount(signedAmount, transaction.currency, displayCurrency);
-      const date = new Date(transaction.date);
-      if (date <= midPoint) {
-        acc.previous += amount;
-      } else {
-        acc.current += amount;
-      }
-      return acc;
-    },
-    { current: 0, previous: 0 },
-  );
-  const netIncomeTrendValue =
-    incomeByPeriod.previous === 0
-      ? incomeByPeriod.current === 0
-        ? 0
-        : 100
-      : ((incomeByPeriod.current - incomeByPeriod.previous) /
-          Math.abs(incomeByPeriod.previous)) *
-        100;
-  const netIncomeTrend = `${netIncomeTrendValue >= 0 ? "+" : ""}${netIncomeTrendValue.toFixed(1)}%`;
+  const hasHoldings = holdings.length > 0;
   const isEmptyDashboard =
     accounts.length === 0 && assets.length === 0 && transactions.length === 0;
 
@@ -681,11 +838,17 @@ export default function DashboardPage() {
         <header className="page-header">
           <div>
             <h1>{pageTitles.dashboard}</h1>
-            <p className="muted">Overview of your asset growth and daily performance.</p>
+            <p className="muted">Start tracking assets, cashflow, and holdings in one view.</p>
           </div>
           <div className="toolbar">
             <button className="pill primary" onClick={() => setIsTransactionOpen(true)}>
               Add Transaction
+            </button>
+            <button className="pill" onClick={() => navigate("/transactions?create=recurring")}>
+              Add Recurring
+            </button>
+            <button className="pill" onClick={() => navigate("/stocks?create=holding")}>
+              Add Stock Trade
             </button>
           </div>
         </header>
@@ -799,6 +962,9 @@ export default function DashboardPage() {
             actionLabel="Add transaction"
             actionHint="Start with an income or expense entry."
             onAction={() => setIsTransactionOpen(true)}
+            secondaryActionLabel="Add stock trade"
+            onSecondaryAction={() => navigate("/stocks?create=holding")}
+            secondaryActionHint="Track investments alongside cash activity."
           />
         </div>
       </section>
@@ -811,12 +977,21 @@ export default function DashboardPage() {
         <div>
           <h1>{pageTitles.dashboard}</h1>
           <p className="muted">
-            Overview of your asset growth and daily performance.
+            Track assets, cashflow, and holdings with a clean monthly snapshot.
           </p>
+          <div className="cache-notice" aria-live="polite">
+            {cacheNotice ?? "\u00A0"}
+          </div>
         </div>
         <div className="toolbar">
           <button className="pill primary" onClick={() => setIsTransactionOpen(true)}>
             Add Transaction
+          </button>
+          <button className="pill" onClick={() => navigate("/transactions?create=recurring")}>
+            Add Recurring
+          </button>
+          <button className="pill" onClick={() => navigate("/stocks?create=holding")}>
+            Add Stock Trade
           </button>
           <button
             className="pill"
@@ -963,27 +1138,33 @@ export default function DashboardPage() {
           footnote={
             priceStatus?.missing_count
               ? `Missing prices for ${priceStatus.missing_count} holdings`
-              : "vs last period"
+              : "Portfolio value"
           }
         />
         <KpiCard
-          label="Net Income"
-          value={formatCurrency(netIncome, displayCurrency)}
-          trend={netIncomeTrend}
-          footnote="This month"
+          label="Net Cashflow"
+          value={formatCurrency(netCashflow, displayCurrency)}
+          trend={netCashflowTrend ?? undefined}
+          footnote="Last 30 days"
         />
         <KpiCard
-          label="Growth"
-          value={growthLabel}
-          trend={hasHistory ? "Stable" : "No data"}
-          footnote="Year to date"
+          label="Monthly Income"
+          value={formatCurrency(monthlyIncome, displayCurrency)}
+          footnote="Last 30 days"
+        />
+        <KpiCard
+          label="Monthly Expenses"
+          value={formatCurrency(monthlyExpense, displayCurrency)}
+          footnote="Last 30 days"
         />
       </div>
       <div className="card chart-card">
         <div className="chart-header">
           <div>
-            <h3>Asset Growth</h3>
-            <p className="muted">Track portfolio growth in your date range.</p>
+            <h3>Growth curve</h3>
+            <p className="muted">
+              Net worth trend for the selected range ({growthLabel}).
+            </p>
           </div>
           <DateRangePicker value={range} onChange={setRange} />
         </div>
@@ -1013,98 +1194,72 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
-      <div className="split-grid">
-        <div className="card">
-          <h3>Weekly Cashflow</h3>
-          <p className="muted">Income vs expenses snapshot.</p>
-          <BarChart
-            values={barValues}
-            formatValue={(value) => formatCurrency(value, displayCurrency)}
-          />
-        </div>
-        <div className="card">
-          <h3>Allocation</h3>
-          <p className="muted">Income vs expense mix.</p>
-          {donutValues.length ? (
-            <DonutChart
-              values={donutValues}
-              formatValue={(value) => formatCurrency(value, displayCurrency)}
-            />
-          ) : (
-            <p className="muted">No assets yet.</p>
-          )}
-          <div className="legend">
-            {donutValues.map((item) => (
-              <div key={item.label} className="legend-item">
-                <span className="legend-dot" style={{ background: item.color }} />
-                {item.label}
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="card">
-          <h3>FX rates</h3>
-          <p className="muted">Latest USD base currency rates.</p>
-          {latestFxRates.length === 0 ? (
-            <p className="muted">No FX rates available.</p>
-          ) : (
-            <div className="chip-grid">
-              {latestFxRates.map((rate) => (
-                <span key={rate.quote_currency} className="chip">
-                  {rate.quote_currency} {rate.rate.toFixed(3)}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
       <div className="card list-card">
-        <div className="list-row list-header columns-6">
-          <span>Date</span>
+        <div className="list-row list-header columns-7">
+          <span>Symbol</span>
+          <span>Shares</span>
+          <span>Last price</span>
+          <span>Avg price</span>
+          <span>1D change</span>
+          <span>Market value ({displayCurrency})</span>
           <span>Account</span>
-          <span>Type</span>
-          <span>Category</span>
-          <span>Amount ({displayCurrency})</span>
-          <span>Notes</span>
         </div>
         {isFiltering ? (
-          <LoadingSkeleton label="Refreshing activity" lines={6} />
-        ) : filteredTransactions.length === 0 ? (
+          <LoadingSkeleton label="Refreshing holdings" lines={5} />
+        ) : !hasHoldings ? (
           <EmptyState
-            title={
-              transactions.length === 0
-                ? "No activity yet"
-                : "No activity matches this view"
-            }
-            description="Metrics summarize your cashflow and balances from recorded transactions."
-            actionLabel="Add transaction"
-            actionHint="Log a transaction to populate your metrics feed."
-            onAction={() => setIsTransactionOpen(true)}
+            title="No holdings to show yet"
+            description="Add a stock trade to track last price, day change, and market value."
+            actionLabel="Add stock trade"
+            onAction={() => navigate("/stocks?create=holding")}
+            actionHint="Keep holdings updated to see daily moves."
+            secondaryActionLabel="Log a transaction"
+            onSecondaryAction={() => setIsTransactionOpen(true)}
+            secondaryActionHint="Record cashflow alongside holdings."
           />
         ) : (
-          filteredTransactions.map((transaction) => (
-            <div
-              className="list-row columns-6"
-              key={transaction.id}
-            >
-              <span>{formatDateDisplay(transaction.date)}</span>
-              <span>{transaction.account}</span>
-              <span>{transaction.type}</span>
-              <span>{transaction.category}</span>
-              <span className="amount-cell">
+          holdings.map((holding) => {
+            const changeLabel =
+              holding.changeValue === null || holding.changePercent === null
+                ? "—"
+                : `${holding.changeValue > 0 ? "+" : ""}${formatCurrency(
+                    holding.changeValue,
+                    holding.currency,
+                  )} (${holding.changePercent > 0 ? "+" : ""}${holding.changePercent.toFixed(
+                    2,
+                  )}%)`;
+            return (
+              <div className="list-row columns-7" key={holding.id}>
+                <span>{holding.symbol}</span>
+                <span>{holding.shares.toFixed(2)}</span>
                 <span>
-                  {formatCurrency(
-                    convertAmount(transaction.amount, transaction.currency, displayCurrency),
-                    displayCurrency,
-                  )}
+                  {holding.lastPrice === null
+                    ? "—"
+                    : formatCurrency(holding.lastPrice, holding.currency)}
                 </span>
-                <span className="subtext">
-                  {formatCurrency(transaction.amount, transaction.currency)} {transaction.currency}
+                <span>
+                  {holding.avgPrice === null
+                    ? "—"
+                    : formatCurrency(holding.avgPrice, holding.currency)}
                 </span>
-              </span>
-              <span>{transaction.notes}</span>
-            </div>
-          ))
+                <span
+                  className={
+                    holding.changeValue !== null && holding.changeValue < 0
+                      ? "status warn"
+                      : "status"
+                  }
+                >
+                  {changeLabel}
+                </span>
+                <span>
+                  {holding.marketValue === null
+                    ? "—"
+                    : formatCurrency(holding.marketValue, displayCurrency)}
+                </span>
+                <span>{holding.account}</span>
+              </div>
+            );
+          })
         )}
       </div>
     </section>

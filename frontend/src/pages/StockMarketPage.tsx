@@ -201,7 +201,7 @@ export default function StockMarketPage() {
               target="_blank"
               rel="noreferrer"
             >
-              Open Finviz heatmap
+              Open full heatmap
             </a>
           </div>
         </div>
@@ -245,6 +245,23 @@ export default function StockMarketPage() {
             ))}
           </div>
         )}
+        <div className="heatmap-embed">
+          <div className="heatmap-header">
+            <div>
+              <h4>Finviz heatmap</h4>
+              <p className="muted">Live sector performance without leaving Firecash.</p>
+            </div>
+          </div>
+          <iframe
+            title="Finviz market heatmap"
+            src="/api/market/finviz-heatmap"
+            className="heatmap-frame"
+            loading="lazy"
+          />
+          <p className="muted">
+            Having trouble loading? Use the "Open full heatmap" button above.
+          </p>
+        </div>
       </div>
       <div className="card">
         <div className="chart-header">

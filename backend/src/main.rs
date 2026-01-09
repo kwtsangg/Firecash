@@ -187,6 +187,7 @@ async fn main() {
             "/api/integrations/{id}/logs",
             get(routes::integrations::list_integration_logs),
         )
+        .route("/api/market/finviz-heatmap", get(routes::market::finviz_heatmap))
         .route(
             "/api/plugins",
             get(routes::plugins::list_plugins).post(routes::plugins::register_plugin),

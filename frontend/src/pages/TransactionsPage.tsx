@@ -131,6 +131,22 @@ export default function TransactionsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const categoryFilter = searchParams.get("category") ?? "All";
   const merchantFilter = searchParams.get("merchant") ?? "";
+  const createParam = searchParams.get("create");
+
+  useEffect(() => {
+    if (createParam === "transaction") {
+      setIsTransactionOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete("create");
+      setSearchParams(next, { replace: true });
+    }
+    if (createParam === "recurring") {
+      setIsRecurringOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete("create");
+      setSearchParams(next, { replace: true });
+    }
+  }, [createParam, searchParams, setSearchParams]);
 
   const loadData = useCallback(async () => {
     let isMounted = true;

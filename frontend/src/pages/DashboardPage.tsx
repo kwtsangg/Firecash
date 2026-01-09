@@ -13,7 +13,7 @@ import {
   fetchAccountGroups,
 } from "../api/accountGroups";
 import { fetchPreferences } from "../api/preferences";
-import { get, post } from "../utils/apiClient";
+import { ApiError, get, post } from "../utils/apiClient";
 import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
 import { formatDateDisplay, getDefaultRange, toDateInputValue, toIsoDateTime } from "../utils/date";
 import { pageTitles } from "../utils/pageTitles";
@@ -127,6 +127,7 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isFiltering, setIsFiltering] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<string[]>([]);
   const [isPreferencesLoading, setIsPreferencesLoading] = useState(true);
   const [preferencesError, setPreferencesError] = useState<string | null>(null);
 
@@ -134,11 +135,25 @@ export default function DashboardPage() {
     setToast({ title, description });
   }, []);
 
+  const formatFailureReason = (error: unknown) => {
+    if (error instanceof ApiError) {
+      return `HTTP ${error.status} — ${error.message}`;
+    }
+    if (error instanceof Error) {
+      return error.message;
+    }
+    return "Unknown error";
+  };
+
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === "object" && value !== null;
+
   const loadData = useCallback(async () => {
     let isMounted = true;
     const run = async () => {
       setIsLoading(true);
       setError(null);
+      setErrorDetails([]);
       try {
         const results = await Promise.allSettled([
           get<Account[]>("/api/accounts"),
@@ -152,34 +167,75 @@ export default function DashboardPage() {
           get<FxRate[]>("/api/fx-rates"),
         ]);
         const failures: string[] = [];
-        const resolve = <T,>(result: PromiseSettledResult<T>, fallback: T, label: string) => {
+        const failureDetails: string[] = [];
+        const resolve = <T,>(
+          result: PromiseSettledResult<T>,
+          fallback: T,
+          label: string,
+          isValid?: (value: T) => boolean,
+          invalidMessage = "Response was empty or invalid",
+        ) => {
           if (result.status === "fulfilled") {
-            return result.value;
+            if (!isValid || isValid(result.value)) {
+              return result.value;
+            }
+            failures.push(label);
+            failureDetails.push(`${label}: ${invalidMessage}`);
+            return fallback;
           }
           failures.push(label);
+          failureDetails.push(`${label}: ${formatFailureReason(result.reason)}`);
           return fallback;
         };
-        const accountsResponse = resolve(results[0], [] as Account[], "accounts");
-        const groupsResponse = resolve(results[1], [] as AccountGroup[], "groups");
+        const accountsResponse = resolve(
+          results[0],
+          [] as Account[],
+          "accounts",
+          Array.isArray,
+        );
+        const groupsResponse = resolve(
+          results[1],
+          [] as AccountGroup[],
+          "groups",
+          Array.isArray,
+        );
         const membershipResponse = resolve(
           results[2],
           [] as AccountGroupMembership[],
           "memberships",
+          Array.isArray,
         );
-        const assetsResponse = resolve(results[3], [] as Asset[], "assets");
+        const assetsResponse = resolve(results[3], [] as Asset[], "assets", Array.isArray);
         const transactionsResponse = resolve(
           results[4],
           [] as Transaction[],
           "transactions",
+          Array.isArray,
         );
-        const historyResponse = resolve(results[5], [] as HistoryPoint[], "history");
-        const totalsResponse = resolve(results[6], null as TotalsResponse | null, "totals");
+        const historyResponse = resolve(
+          results[5],
+          [] as HistoryPoint[],
+          "history",
+          Array.isArray,
+        );
+        const totalsResponse = resolve(
+          results[6],
+          null as TotalsResponse | null,
+          "totals",
+          (value) => value === null || isRecord(value),
+        );
         const priceStatusResponse = resolve(
           results[7],
           null as AssetPriceStatus | null,
           "price status",
+          (value) => value === null || isRecord(value),
         );
-        const fxRatesResponse = resolve(results[8], [] as FxRate[], "fx rates");
+        const fxRatesResponse = resolve(
+          results[8],
+          [] as FxRate[],
+          "fx rates",
+          Array.isArray,
+        );
         const normalizedFxRates = Array.isArray(fxRatesResponse) ? fxRatesResponse : [];
 
         if (!isMounted) {
@@ -187,6 +243,10 @@ export default function DashboardPage() {
         }
         if (failures.length === results.length) {
           setError("Unable to load dashboard data.");
+          setErrorDetails([
+            "Every dashboard request failed. Confirm the API is running and your session is valid.",
+            ...failureDetails,
+          ]);
           return;
         }
 
@@ -221,6 +281,10 @@ export default function DashboardPage() {
       } catch (err) {
         if (isMounted) {
           setError("Unable to load dashboard data.");
+          setErrorDetails([
+            "We hit an unexpected error while loading the dashboard.",
+            formatFailureReason(err),
+          ]);
         }
       } finally {
         if (isMounted) {
@@ -612,6 +676,16 @@ export default function DashboardPage() {
       <section className="page">
         <div className="card page-state error">
           <p>{error}</p>
+          {errorDetails.length > 0 ? (
+            <>
+              <p className="muted">Debug details</p>
+              <ul>
+                {errorDetails.map((detail) => (
+                  <li key={detail}>{detail}</li>
+                ))}
+              </ul>
+            </>
+          ) : null}
           <button className="pill" type="button" onClick={loadData}>
             Retry
           </button>

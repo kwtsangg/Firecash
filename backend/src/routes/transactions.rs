@@ -3,13 +3,15 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use chrono::NaiveDate;
 use sqlx::{QueryBuilder, Row};
 use uuid::Uuid;
 
 use crate::{
     auth::AuthenticatedUser,
     models::{
-        CreateTransactionRequest, Transaction, UpdateTransactionRequest, UpdateTransactionResponse,
+        CreateTransactionRequest, DailyTransactionTotal, Transaction, UpdateTransactionRequest,
+        UpdateTransactionResponse,
     },
     state::AppState,
 };
@@ -26,6 +28,15 @@ pub struct TransactionQueryParams {
     pub currency_code: Option<String>,
     pub category: Option<String>,
     pub merchant: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct DailyTotalsQueryParams {
+    pub start_date: Option<NaiveDate>,
+    pub end_date: Option<NaiveDate>,
+    pub account_id: Option<Uuid>,
+    pub account_group_id: Option<Uuid>,
+    pub currency_code: Option<String>,
 }
 
 pub async fn list_transactions(
@@ -121,6 +132,92 @@ pub async fn list_transactions(
 
     let records = query
         .build_query_as::<Transaction>()
+        .fetch_all(&state.pool)
+        .await
+        .map_err(crate::auth::internal_error)?;
+
+    Ok(Json(records))
+}
+
+pub async fn daily_totals(
+    State(state): State<AppState>,
+    user: AuthenticatedUser,
+    Query(params): Query<DailyTotalsQueryParams>,
+) -> Result<Json<Vec<DailyTransactionTotal>>, (axum::http::StatusCode, String)> {
+    let mut query = QueryBuilder::new(
+        r#"
+        WITH accessible_accounts AS (
+            SELECT id
+            FROM accounts
+            WHERE user_id =
+        "#,
+    );
+    query.push_bind(user.id);
+    query.push(
+        r#"
+            UNION
+            SELECT agm.account_id
+            FROM account_group_members agm
+            INNER JOIN account_group_users agu ON agm.group_id = agu.group_id
+            WHERE agu.user_id =
+        "#,
+    );
+    query.push_bind(user.id);
+    query.push(
+        r#"
+        )
+        SELECT DATE(t.occurred_at) as date,
+               t.currency_code,
+               COALESCE(SUM(t.amount), 0.0) as total
+        FROM transactions t
+        INNER JOIN accounts a ON t.account_id = a.id
+        WHERE t.account_id IN (SELECT id FROM accessible_accounts)
+          AND t.transaction_type = 'expense'
+        "#,
+    );
+
+    if let Some(account_id) = params.account_id {
+        query.push(" AND t.account_id = ");
+        query.push_bind(account_id);
+    }
+
+    if let Some(group_id) = params.account_group_id {
+        query.push(
+            r#"
+            AND EXISTS (
+                SELECT 1
+                FROM account_group_members agm
+                WHERE agm.group_id =
+            "#,
+        );
+        query.push_bind(group_id);
+        query.push(" AND agm.account_id = t.account_id)");
+    }
+
+    if let Some(start_date) = params.start_date {
+        query.push(" AND DATE(t.occurred_at) >= ");
+        query.push_bind(start_date);
+    }
+
+    if let Some(end_date) = params.end_date {
+        query.push(" AND DATE(t.occurred_at) <= ");
+        query.push_bind(end_date);
+    }
+
+    if let Some(currency_code) = params.currency_code {
+        query.push(" AND t.currency_code = ");
+        query.push_bind(currency_code);
+    }
+
+    query.push(
+        r#"
+        GROUP BY DATE(t.occurred_at), t.currency_code
+        ORDER BY DATE(t.occurred_at)
+        "#,
+    );
+
+    let records = query
+        .build_query_as::<DailyTransactionTotal>()
         .fetch_all(&state.pool)
         .await
         .map_err(crate::auth::internal_error)?;

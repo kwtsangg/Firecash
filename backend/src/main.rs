@@ -129,6 +129,10 @@ async fn main() {
                 .post(routes::transactions::create_transaction),
         )
         .route(
+            "/api/transactions/daily-totals",
+            get(routes::transactions::daily_totals),
+        )
+        .route(
             "/api/transactions/{id}",
             put(routes::transactions::update_transaction)
                 .delete(routes::transactions::delete_transaction),

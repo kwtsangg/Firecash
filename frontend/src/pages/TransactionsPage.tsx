@@ -316,10 +316,21 @@ export default function TransactionsPage() {
   const toggleTransactionSelection = (id: string) => {
     setSelectedTransactions((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) {
+      const wasSelected = next.has(id);
+      if (wasSelected) {
         next.delete(id);
       } else {
         next.add(id);
+      }
+      if (!wasSelected) {
+        setPendingEdits((prevEdits) => {
+          if (!prevEdits[id]) {
+            return prevEdits;
+          }
+          const nextEdits = { ...prevEdits };
+          delete nextEdits[id];
+          return nextEdits;
+        });
       }
       return next;
     });
@@ -354,19 +365,23 @@ export default function TransactionsPage() {
     showToast("Bulk updates staged", "Review changes before applying.");
   };
 
-  const pendingEditsList = Object.entries(pendingEdits);
+  const pendingEditsList = useMemo(
+    () => Object.entries(pendingEdits).filter(([id]) => !selectedTransactions.has(id)),
+    [pendingEdits, selectedTransactions],
+  );
 
   const applyPendingChanges = async () => {
     if (pendingEditsList.length === 0 && selectedTransactions.size === 0) {
       showToast("No changes", "There are no edits to apply.");
       return;
     }
+    const pendingEditsToApply = Object.fromEntries(pendingEditsList);
     const previousRows = transactions;
     const previousEdits = pendingEdits;
     const previousSelection = selectedTransactions;
     const updatedRows = transactions
       .map((row) => {
-        const updates = pendingEdits[row.id];
+        const updates = pendingEditsToApply[row.id] as Partial<TransactionRow> | undefined;
         if (!updates) {
           return row;
         }

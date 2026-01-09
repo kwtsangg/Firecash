@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CandlestickChart } from "../components/Charts";
 import EmptyState from "../components/EmptyState";
+import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
 import {
   Candle,
@@ -11,6 +12,7 @@ import {
 } from "../api/market";
 import { formatCurrency } from "../utils/currency";
 import { formatDateDisplay } from "../utils/date";
+import { formatApiErrorDetail } from "../utils/errorMessages";
 import { pageTitles } from "../utils/pageTitles";
 import { usePageMeta } from "../utils/pageMeta";
 
@@ -73,11 +75,14 @@ export default function StockMarketPage() {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [candlesError, setCandlesError] = useState<string | null>(null);
+  const [candlesErrorDetails, setCandlesErrorDetails] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [rangeDays, setRangeDays] = useState<number | null>(90);
   const [isOverviewLoading, setIsOverviewLoading] = useState(false);
   const [overviewError, setOverviewError] = useState<string | null>(null);
+  const [overviewErrorDetails, setOverviewErrorDetails] = useState<string[]>([]);
   const [symbolsError, setSymbolsError] = useState<string | null>(null);
+  const [symbolsErrorDetails, setSymbolsErrorDetails] = useState<string[]>([]);
   const [overview, setOverview] = useState<MarketOverviewItem[]>([]);
   const displayCurrency = selectedSymbol ? currencyFromSymbol(selectedSymbol) : "USD";
 
@@ -86,9 +91,12 @@ export default function StockMarketPage() {
       const assetSymbols = await fetchAssetSymbols();
       setSymbols(Array.from(new Set([...assetSymbols, ...POPULAR_SYMBOLS])));
       setSymbolsError(null);
+      setSymbolsErrorDetails([]);
     } catch (error) {
       setSymbols(POPULAR_SYMBOLS);
       setSymbolsError("Unable to load tracked assets. Showing popular symbols instead.");
+      const detail = formatApiErrorDetail(error);
+      setSymbolsErrorDetails(detail ? [detail] : []);
     }
   }, []);
 
@@ -98,9 +106,12 @@ export default function StockMarketPage() {
       const results = await fetchMarketOverview(OVERVIEW_SYMBOLS);
       setOverview(results);
       setOverviewError(null);
+      setOverviewErrorDetails([]);
     } catch (error) {
       setOverview(OVERVIEW_SYMBOLS.map((item) => ({ ...item, price: null, change: null })));
       setOverviewError("Unable to load market overview data right now.");
+      const detail = formatApiErrorDetail(error);
+      setOverviewErrorDetails(detail ? [detail] : []);
     } finally {
       setIsOverviewLoading(false);
     }
@@ -145,12 +156,15 @@ export default function StockMarketPage() {
     setSelectedSymbol(symbol);
     setIsLoading(true);
     setCandlesError(null);
+    setCandlesErrorDetails([]);
     try {
       const response = await fetchCandles(symbol);
       setCandles(response);
     } catch (error) {
       setCandles([]);
       setCandlesError("Unable to load candles. Try again or refresh later.");
+      const detail = formatApiErrorDetail(error);
+      setCandlesErrorDetails(detail ? [detail] : []);
     } finally {
       setIsLoading(false);
     }
@@ -191,7 +205,13 @@ export default function StockMarketPage() {
             </a>
           </div>
         </div>
-        {overviewError ? <p className="muted">{overviewError}</p> : null}
+        {overviewError ? (
+          <ErrorState
+            headline={overviewError}
+            details={overviewErrorDetails}
+            onRetry={retryOverview}
+          />
+        ) : null}
         {isOverviewLoading ? (
           <LoadingState
             title="Loading market overview"
@@ -241,7 +261,14 @@ export default function StockMarketPage() {
             aria-label="Search symbols"
           />
         </div>
-        {symbolsError ? <p className="muted">{symbolsError}</p> : null}
+        {symbolsError ? (
+          <ErrorState
+            headline={symbolsError}
+            details={symbolsErrorDetails}
+            onRetry={loadSymbols}
+            retryLabel="Reload symbols"
+          />
+        ) : null}
         <div className="symbol-grid">
           {filteredSymbols.length === 0 ? (
             <EmptyState
@@ -300,12 +327,11 @@ export default function StockMarketPage() {
               className="loading-state-inline"
             />
           ) : candlesError ? (
-            <EmptyState
-              title="Candles unavailable"
-              description={candlesError}
-              actionLabel="Try again"
-              onAction={retryCandles}
-              actionHint={selectedSymbol ? "We will retry the selected symbol." : undefined}
+            <ErrorState
+              headline={candlesError}
+              details={candlesErrorDetails}
+              onRetry={retryCandles}
+              retryLabel="Try again"
             />
           ) : displayedCandles.length === 0 && selectedSymbol ? (
             <EmptyState

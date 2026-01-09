@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
+import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
 import Modal from "../components/Modal";
 import { useAuth } from "../components/AuthContext";
@@ -24,7 +25,7 @@ import {
 } from "../api/apiTokens";
 import { get, post, put } from "../utils/apiClient";
 import { formatDateDisplay } from "../utils/date";
-import { getFriendlyErrorMessage } from "../utils/errorMessages";
+import { formatApiErrorDetail, getFriendlyErrorMessage } from "../utils/errorMessages";
 import { getLocale, setLocale, supportedLocales, type SupportedLocale } from "../utils/localization";
 import { pageTitles } from "../utils/pageTitles";
 import { usePageMeta } from "../utils/pageMeta";
@@ -59,6 +60,7 @@ export default function SettingsPage() {
   const [fxRates, setFxRates] = useState<FxRate[]>([]);
   const [isPreferencesLoading, setIsPreferencesLoading] = useState(true);
   const [preferencesError, setPreferencesError] = useState<string | null>(null);
+  const [preferencesErrorDetails, setPreferencesErrorDetails] = useState<string[]>([]);
   const [exportRedaction, setExportRedaction] = useState("none");
   const [retentionDays, setRetentionDays] = useState<number | null>(null);
   const [isBackupBusy, setIsBackupBusy] = useState(false);
@@ -67,6 +69,7 @@ export default function SettingsPage() {
   const [isRestoreOpen, setIsRestoreOpen] = useState(false);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [auditError, setAuditError] = useState<string | null>(null);
+  const [auditErrorDetails, setAuditErrorDetails] = useState<string[]>([]);
   const [accountGroups, setAccountGroups] = useState<AccountGroup[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [groupMembers, setGroupMembers] = useState<AccountGroupUser[]>([]);
@@ -133,6 +136,7 @@ export default function SettingsPage() {
   const loadPreferences = async () => {
     setIsPreferencesLoading(true);
     setPreferencesError(null);
+    setPreferencesErrorDetails([]);
     try {
       const response = await fetchPreferences();
       setCategories(response.categories);
@@ -143,6 +147,8 @@ export default function SettingsPage() {
       setAssetDataSource(response.assetDataSource);
     } catch (error) {
       setPreferencesError("Unable to load preferences right now.");
+      const detail = formatApiErrorDetail(error);
+      setPreferencesErrorDetails(detail ? [detail] : []);
     } finally {
       setIsPreferencesLoading(false);
     }
@@ -167,11 +173,14 @@ export default function SettingsPage() {
 
   const loadAuditLogs = async () => {
     setAuditError(null);
+    setAuditErrorDetails([]);
     try {
       const logs = await fetchAuditLogs();
       setAuditLogs(logs);
     } catch (error) {
       setAuditError("Audit logs are available to admins only.");
+      const detail = formatApiErrorDetail(error);
+      setAuditErrorDetails(detail ? [detail] : []);
     }
   };
 
@@ -830,7 +839,11 @@ export default function SettingsPage() {
           <h3>Audit log</h3>
           <p className="muted">Security activity visible to admins.</p>
           {auditError ? (
-            <p className="input-helper">{auditError}</p>
+            <ErrorState
+              headline={auditError}
+              details={auditErrorDetails}
+              onRetry={loadAuditLogs}
+            />
           ) : (
             <div className="table compact">
               <div className="table-row table-header columns-3">
@@ -855,12 +868,11 @@ export default function SettingsPage() {
           <h3>Categories</h3>
           <p className="muted">Create and manage transaction categories.</p>
           {preferencesError ? (
-            <div className="input-helper">
-              {preferencesError}{" "}
-              <button className="pill" type="button" onClick={loadPreferences}>
-                Retry
-              </button>
-            </div>
+            <ErrorState
+              headline={preferencesError}
+              details={preferencesErrorDetails}
+              onRetry={loadPreferences}
+            />
           ) : null}
           <div className="category-manager">
             <input
@@ -938,12 +950,11 @@ export default function SettingsPage() {
           <h3>Stock strategies</h3>
           <p className="muted">Manage strategy labels for holdings.</p>
           {preferencesError ? (
-            <div className="input-helper">
-              {preferencesError}{" "}
-              <button className="pill" type="button" onClick={loadPreferences}>
-                Retry
-              </button>
-            </div>
+            <ErrorState
+              headline={preferencesError}
+              details={preferencesErrorDetails}
+              onRetry={loadPreferences}
+            />
           ) : null}
           <div className="category-manager">
             <input

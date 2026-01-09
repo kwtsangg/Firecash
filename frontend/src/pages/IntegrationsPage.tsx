@@ -1,9 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
+import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
-import { createIntegration, fetchIntegrationCatalog, fetchIntegrationLogs, fetchIntegrations, type IntegrationLogEntry, type IntegrationProviderCatalog, type IntegrationSummary } from "../api/integrations";
+import {
+  createIntegration,
+  fetchIntegrationCatalog,
+  fetchIntegrationLogs,
+  fetchIntegrations,
+  type IntegrationLogEntry,
+  type IntegrationProviderCatalog,
+  type IntegrationSummary,
+} from "../api/integrations";
 import { formatDateDisplay } from "../utils/date";
-import { getFriendlyErrorMessage } from "../utils/errorMessages";
+import { formatApiErrorDetail, getFriendlyErrorMessage } from "../utils/errorMessages";
 import { pageTitles } from "../utils/pageTitles";
 import { usePageMeta } from "../utils/pageMeta";
 
@@ -18,6 +27,8 @@ export default function IntegrationsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [providerKey, setProviderKey] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<string[]>([]);
 
   const showToast = (title: string, description?: string) => {
     setToast({ title, description });
@@ -25,6 +36,8 @@ export default function IntegrationsPage() {
 
   const loadIntegrations = async () => {
     setIsLoading(true);
+    setError(null);
+    setErrorDetails([]);
     try {
       const [integrationData, catalogData] = await Promise.all([
         fetchIntegrations(),
@@ -35,10 +48,13 @@ export default function IntegrationsPage() {
       setProviderKey(catalogData.providers[0]?.key ?? "");
       setSelectedIntegrationId(integrationData[0]?.id ?? null);
     } catch (error) {
-      showToast(
-        "Unable to load integrations",
-        getFriendlyErrorMessage(error, "Please try again in a moment."),
-      );
+      setIntegrations([]);
+      setCatalog([]);
+      setProviderKey("");
+      setSelectedIntegrationId(null);
+      setError("Unable to load integrations.");
+      const detail = formatApiErrorDetail(error);
+      setErrorDetails(detail ? [detail] : []);
     } finally {
       setIsLoading(false);
     }
@@ -75,9 +91,7 @@ export default function IntegrationsPage() {
       <header className="page-header">
         <div>
           <h1>{pageTitles.integrations}</h1>
-          <p className="muted">
-            Connect external data sources and monitor their sync health.
-          </p>
+          <p className="muted">Connect external data sources and monitor their sync health.</p>
         </div>
       </header>
       {toast && <ActionToast toast={toast} onDismiss={() => setToast(null)} />}
@@ -85,6 +99,13 @@ export default function IntegrationsPage() {
         <LoadingState
           title="Loading integrations"
           description="Fetching connected providers and sync status."
+        />
+      ) : error ? (
+        <ErrorState
+          className="card"
+          headline={error}
+          details={errorDetails}
+          onRetry={loadIntegrations}
         />
       ) : (
         <div className="split-grid">

@@ -17,3 +17,17 @@ export function getFriendlyErrorMessage(error: unknown, fallback: string) {
   }
   return fallback;
 }
+
+export function formatApiErrorDetail(error: unknown) {
+  if (error instanceof ApiError) {
+    const retryNotice =
+      error.status === 429 && typeof error.retryAfterSeconds === "number"
+        ? ` Retry in ${error.retryAfterSeconds}s.`
+        : "";
+    return `HTTP ${error.status} — ${error.message}.${retryNotice}`.trim();
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return null;
+}

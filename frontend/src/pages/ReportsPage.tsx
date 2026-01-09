@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import EmptyState from "../components/EmptyState";
+import ErrorState from "../components/ErrorState";
 import KpiCard from "../components/KpiCard";
 import LoadingState from "../components/LoadingState";
 import { useCurrency } from "../components/CurrencyContext";
 import { ReportSnapshot, fetchReportSnapshot } from "../api/reports";
 import { convertAmount, formatCurrency } from "../utils/currency";
 import { formatDateDisplay } from "../utils/date";
+import { formatApiErrorDetail } from "../utils/errorMessages";
 import { pageTitles } from "../utils/pageTitles";
 import { usePageMeta } from "../utils/pageMeta";
 
@@ -16,16 +18,20 @@ export default function ReportsPage() {
   const { currency: displayCurrency } = useCurrency();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<string[]>([]);
   const [snapshot, setSnapshot] = useState<ReportSnapshot | null>(null);
 
   const loadReports = useCallback(async () => {
     setIsLoading(true);
     setError(null);
+    setErrorDetails([]);
     try {
       const response = await fetchReportSnapshot();
       setSnapshot(response);
     } catch (err) {
       setError("Unable to load reports right now.");
+      const detail = formatApiErrorDetail(err);
+      setErrorDetails(detail ? [detail] : []);
     } finally {
       setIsLoading(false);
     }
@@ -89,12 +95,12 @@ export default function ReportsPage() {
   if (error) {
     return (
       <section className="page">
-        <div className="card page-state error">
-          <p>{error}</p>
-          <button className="pill" type="button" onClick={loadReports}>
-            Retry
-          </button>
-        </div>
+        <ErrorState
+          className="card"
+          headline={error}
+          details={errorDetails}
+          onRetry={loadReports}
+        />
       </section>
     );
   }

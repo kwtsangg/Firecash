@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
 import EmptyState from "../components/EmptyState";
+import ErrorState from "../components/ErrorState";
 import LoadingSkeleton from "../components/LoadingSkeleton";
 import Modal from "../components/Modal";
 import { useSelection } from "../components/SelectionContext";
@@ -13,7 +14,7 @@ import {
   updateAccountGroup,
 } from "../api/accountGroups";
 import { get, post } from "../utils/apiClient";
-import { getFriendlyErrorMessage } from "../utils/errorMessages";
+import { formatApiErrorDetail, getFriendlyErrorMessage } from "../utils/errorMessages";
 import { pageTitles } from "../utils/pageTitles";
 import { usePageMeta } from "../utils/pageMeta";
 
@@ -51,6 +52,7 @@ export default function AccountsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isFiltering, setIsFiltering] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<string[]>([]);
   const [isMembershipSaving, setIsMembershipSaving] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -58,6 +60,7 @@ export default function AccountsPage() {
     const run = async () => {
       setIsLoading(true);
       setError(null);
+      setErrorDetails([]);
       try {
         const [accountsResponse, groupsResponse, membershipResponse] = await Promise.all([
           get<Account[]>("/api/accounts"),
@@ -75,6 +78,8 @@ export default function AccountsPage() {
       } catch (err) {
         if (isMounted) {
           setError("Unable to load accounts data.");
+          const detail = formatApiErrorDetail(err);
+          setErrorDetails(detail ? [detail] : []);
         }
       } finally {
         if (isMounted) {
@@ -392,12 +397,12 @@ export default function AccountsPage() {
   if (error) {
     return (
       <section className="page">
-        <div className="card page-state error">
-          <p>{error}</p>
-          <button className="pill" type="button" onClick={loadData}>
-            Retry
-          </button>
-        </div>
+        <ErrorState
+          className="card"
+          headline={error}
+          details={errorDetails}
+          onRetry={loadData}
+        />
       </section>
     );
   }

@@ -3,6 +3,7 @@ import ActionToast, { ActionToastData } from "../components/ActionToast";
 import { BarChart, DonutChart, LineChart } from "../components/Charts";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import EmptyState from "../components/EmptyState";
+import ErrorState from "../components/ErrorState";
 import KpiCard from "../components/KpiCard";
 import LoadingSkeleton from "../components/LoadingSkeleton";
 import Modal from "../components/Modal";
@@ -17,7 +18,7 @@ import { del, get, post, put } from "../utils/apiClient";
 import { convertAmount, formatCurrency } from "../utils/currency";
 import { formatDateDisplay, getDefaultRange, toDateInputValue } from "../utils/date";
 import { supportedCurrencies } from "../utils/currency";
-import { getFriendlyErrorMessage } from "../utils/errorMessages";
+import { formatApiErrorDetail, getFriendlyErrorMessage } from "../utils/errorMessages";
 import { pageTitles } from "../utils/pageTitles";
 import { usePageMeta } from "../utils/pageMeta";
 
@@ -191,6 +192,7 @@ export default function StocksPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isFiltering, setIsFiltering] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<string[]>([]);
   const [isPreferencesLoading, setIsPreferencesLoading] = useState(true);
   const [preferencesError, setPreferencesError] = useState<string | null>(null);
   const [lastPriceUpdate, setLastPriceUpdate] = useState<string | null>(null);
@@ -203,6 +205,7 @@ export default function StocksPage() {
     const run = async () => {
       setIsLoading(true);
       setError(null);
+      setErrorDetails([]);
       try {
         const [
           accountsResponse,
@@ -287,6 +290,8 @@ export default function StocksPage() {
       } catch (err) {
         if (isMounted) {
           setError("Unable to load stock data.");
+          const detail = formatApiErrorDetail(err);
+          setErrorDetails(detail ? [detail] : []);
         }
       } finally {
         if (isMounted) {
@@ -793,12 +798,12 @@ export default function StocksPage() {
   if (error) {
     return (
       <section className="page">
-        <div className="card page-state error">
-          <p>{error}</p>
-          <button className="pill" type="button" onClick={loadData}>
-            Retry
-          </button>
-        </div>
+        <ErrorState
+          className="card"
+          headline={error}
+          details={errorDetails}
+          onRetry={loadData}
+        />
       </section>
     );
   }

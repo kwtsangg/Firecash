@@ -180,6 +180,7 @@ export default function DashboardPage() {
           "price status",
         );
         const fxRatesResponse = resolve(results[8], [] as FxRate[], "fx rates");
+        const normalizedFxRates = Array.isArray(fxRatesResponse) ? fxRatesResponse : [];
 
         if (!isMounted) {
           return;
@@ -215,7 +216,7 @@ export default function DashboardPage() {
         setHistory(historyResponse);
         setTotals(totalsResponse);
         setPriceStatus(priceStatusResponse);
-        setFxRates(fxRatesResponse);
+        setFxRates(normalizedFxRates);
         setTransactionAccount(accountsResponse[0]?.id ?? "");
       } catch (err) {
         if (isMounted) {
@@ -421,14 +422,47 @@ export default function DashboardPage() {
   const handleRefreshPrices = async () => {
     try {
       await post<{ updated: number }>("/api/assets/refresh-prices", {});
-      const [totalsResponse, priceStatusResponse, fxRatesResponse] = await Promise.all([
+      const results = await Promise.allSettled([
         get<TotalsResponse>("/api/totals"),
         get<AssetPriceStatus>("/api/assets/price-status"),
         get<FxRate[]>("/api/fx-rates"),
       ]);
-      setTotals(totalsResponse);
-      setPriceStatus(priceStatusResponse);
-      setFxRates(fxRatesResponse);
+      const failures: string[] = [];
+      const resolve = <T,>(result: PromiseSettledResult<T>, fallback: T, label: string) => {
+        if (result.status === "fulfilled") {
+          return result.value;
+        }
+        failures.push(label);
+        return fallback;
+      };
+      const totalsResponse = resolve(results[0], null as TotalsResponse | null, "totals");
+      const priceStatusResponse = resolve(
+        results[1],
+        null as AssetPriceStatus | null,
+        "price status",
+      );
+      const fxRatesResponse = resolve(results[2], [] as FxRate[], "fx rates");
+      const normalizedFxRates = Array.isArray(fxRatesResponse) ? fxRatesResponse : [];
+
+      if (totalsResponse) {
+        setTotals(totalsResponse);
+      }
+      if (priceStatusResponse) {
+        setPriceStatus(priceStatusResponse);
+      }
+      setFxRates(normalizedFxRates);
+
+      if (failures.length === results.length) {
+        showToast("Price refresh failed", "Unable to sync the latest prices.");
+        return;
+      }
+      if (failures.length > 0) {
+        showToast(
+          "Refresh completed with warnings",
+          `We could not refresh: ${failures.join(", ")}.`,
+        );
+        return;
+      }
       showToast("Price refresh complete", "Latest prices are now available.");
     } catch (err) {
       showToast("Price refresh failed", "Unable to sync the latest prices.");

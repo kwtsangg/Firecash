@@ -160,6 +160,7 @@ async fn main() {
             "/api/assets/{id}",
             put(routes::assets::update_asset).delete(routes::assets::delete_asset),
         )
+        .route("/api/dashboard", get(routes::dashboard::dashboard))
         .route("/api/totals", get(routes::metrics::totals))
         .route("/api/history", get(routes::metrics::history))
         .route("/api/fx-rates", get(routes::metrics::fx_rates))

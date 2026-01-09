@@ -10,11 +10,13 @@ let unauthorizedHandler: UnauthorizedHandler = null;
 export class ApiError extends Error {
   status: number;
   details?: unknown;
+  retryAfterSeconds?: number;
 
-  constructor(status: number, message: string, details?: unknown) {
+  constructor(status: number, message: string, details?: unknown, retryAfterSeconds?: number) {
     super(message);
     this.status = status;
     this.details = details;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -62,6 +64,22 @@ async function parseResponseBody(response: Response) {
   } catch (error) {
     return text;
   }
+}
+
+function parseRetryAfter(value: string | null): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const seconds = Number.parseInt(value, 10);
+  if (!Number.isNaN(seconds)) {
+    return seconds;
+  }
+  const dateMs = Date.parse(value);
+  if (!Number.isNaN(dateMs)) {
+    const diffSeconds = Math.ceil((dateMs - Date.now()) / 1000);
+    return diffSeconds > 0 ? diffSeconds : 0;
+  }
+  return undefined;
 }
 
 function buildCacheKey(path: string) {
@@ -113,6 +131,7 @@ export async function apiRequest<T>(
   const data = await parseResponseBody(response);
 
   if (!response.ok) {
+    const retryAfterSeconds = parseRetryAfter(response.headers.get("Retry-After"));
     const message =
       (typeof data === "object" && data && "message" in data && (data as { message: string }).message) ||
       (typeof data === "string" ? data : "Request failed");
@@ -120,7 +139,7 @@ export async function apiRequest<T>(
       clearToken();
       unauthorizedHandler?.();
     }
-    throw new ApiError(response.status, message, data);
+    throw new ApiError(response.status, message, data, retryAfterSeconds);
   }
 
   if (method === "GET") {

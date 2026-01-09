@@ -16,11 +16,24 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const handleGoBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate("/login");
+    }
+  };
+
   return (
     <div className="auth-page">
       <div className="auth-card">
         <h1>{pageTitles.register}</h1>
         <p className="muted">Start tracking your net worth today.</p>
+        <div className="auth-actions">
+          <button className="pill" type="button" onClick={handleGoBack}>
+            Go back
+          </button>
+        </div>
         <form
           className="auth-form"
           onSubmit={async (event) => {

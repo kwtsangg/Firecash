@@ -257,9 +257,24 @@ pub async fn demo_login(
     .map_err(internal_error)?;
 
     let user_id = if let Some(record) = record {
+        let user_id: Uuid = record.try_get("id").map_err(internal_error)?;
         let password_hash: String = record.try_get("password_hash").map_err(internal_error)?;
-        verify_password(demo_password, &password_hash)?;
-        record.try_get("id").map_err(internal_error)?
+        if verify_password(demo_password, &password_hash).is_err() {
+            let next_hash = hash_password(demo_password)?;
+            sqlx::query(
+                r#"
+                UPDATE users
+                SET password_hash = $1
+                WHERE id = $2
+                "#,
+            )
+            .bind(next_hash)
+            .bind(user_id)
+            .execute(&state.pool)
+            .await
+            .map_err(internal_error)?;
+        }
+        user_id
     } else {
         let user_id = Uuid::new_v4();
         let password_hash = hash_password(demo_password)?;

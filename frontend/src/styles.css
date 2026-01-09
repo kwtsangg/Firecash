@@ -589,6 +589,31 @@ textarea:focus-visible,
   box-sizing: border-box;
 }
 
+.candlestick-chart .chart-axis-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.candlestick-chart .chart-axis-overlay-text {
+  position: absolute;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 6px rgba(12, 14, 24, 0.6);
+  white-space: nowrap;
+}
+
+.candlestick-chart .chart-axis-overlay-text.axis-text-y {
+  transform: translate(-100%, -50%);
+  text-align: right;
+}
+
+.candlestick-chart .chart-axis-overlay-text.axis-text-x {
+  transform: translate(-50%, 0);
+}
+
 .candlestick-chart .chart-axis-text {
   font-size: 4.6px;
   font-weight: 600;

@@ -660,33 +660,29 @@ export function CandlestickChart({
             />
           </g>
         ) : null}
-        {showAxisLabels
-          ? defaultYLabels.map((item, index) => (
-              <text
-                key={`y-${item.label}-${index}`}
-                x={paddingX - 2}
-                y={item.position}
-                className="chart-axis-text"
-                textAnchor="end"
-              >
-                {item.label}
-              </text>
-            ))
-          : null}
-        {showAxisLabels
-          ? defaultXLabels.map((item, index) => (
-              <text
-                key={`x-${item.label}-${index}`}
-                x={item.position}
-                y="96"
-                className="chart-axis-text"
-                textAnchor="middle"
-              >
-                {item.label}
-              </text>
-            ))
-          : null}
       </svg>
+      {showAxisLabels ? (
+        <div className="chart-axis-overlay">
+          {defaultYLabels.map((item, index) => (
+            <span
+              key={`y-${item.label}-${index}`}
+              className="chart-axis-overlay-text axis-text-y"
+              style={{ left: `${paddingX - 2}%`, top: `${item.position}%` }}
+            >
+              {item.label}
+            </span>
+          ))}
+          {defaultXLabels.map((item, index) => (
+            <span
+              key={`x-${item.label}-${index}`}
+              className="chart-axis-overlay-text axis-text-x"
+              style={{ left: `${item.position}%`, top: "96%" }}
+            >
+              {item.label}
+            </span>
+          ))}
+        </div>
+      ) : null}
       {showAxisLabels ? (
         <>
           <div className="chart-axis-title y">{axisTitleY}</div>

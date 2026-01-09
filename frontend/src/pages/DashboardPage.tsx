@@ -143,7 +143,7 @@ export default function DashboardPage() {
     setToast({ title, description });
   }, []);
 
-  const formatFailureReason = (error: unknown) => {
+  const formatFailureReason = useCallback((error: unknown) => {
     if (error instanceof ApiError) {
       const retryNotice =
         error.status === 429 && typeof error.retryAfterSeconds === "number"
@@ -155,10 +155,13 @@ export default function DashboardPage() {
       return error.message;
     }
     return "Unknown error";
-  };
+  }, []);
 
-  const isRecord = (value: unknown): value is Record<string, unknown> =>
-    typeof value === "object" && value !== null;
+  const isRecord = useCallback(
+    (value: unknown): value is Record<string, unknown> =>
+      typeof value === "object" && value !== null,
+    [],
+  );
 
   const loadData = useCallback(async () => {
     let isMounted = true;

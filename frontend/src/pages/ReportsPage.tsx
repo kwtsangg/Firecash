@@ -143,13 +143,32 @@ export default function ReportsPage() {
     return dailyChartDates.map((date) => dailyTotalsByDate.get(date) ?? 0);
   }, [dailyChartDates, dailyTotalsByDate]);
 
-  const dailyAverage = useMemo(() => {
-    if (dailyChartPoints.length === 0) {
-      return 0;
-    }
-    const total = dailyChartPoints.reduce((sum, value) => sum + value, 0);
-    return total / dailyChartPoints.length;
-  }, [dailyChartPoints]);
+  const dailyMax = dailyChartPoints.length > 0 ? Math.max(...dailyChartPoints) : 0;
+  const dailyMin = dailyChartPoints.length > 0 ? Math.min(...dailyChartPoints) : 0;
+  const dailyMidpoint = Math.round((dailyMax + dailyMin) / 2);
+  const dailyAxisYLabels = [
+    formatCurrency(dailyMax, displayCurrency),
+    formatCurrency(Math.round(dailyMax * 0.75), displayCurrency),
+    formatCurrency(dailyMidpoint, displayCurrency),
+    formatCurrency(Math.round(dailyMin + (dailyMax - dailyMin) * 0.25), displayCurrency),
+    formatCurrency(dailyMin, displayCurrency),
+  ];
+  const dailyRangeDays = Math.max(
+    1,
+    Math.round(
+      (parseDateInput(range.to).getTime() - parseDateInput(range.from).getTime()) /
+        86400000,
+    ),
+  );
+  const dailyLabelCount = Math.min(dailyChartDates.length || 1, dailyRangeDays <= 45 ? 6 : 5);
+  const dailyLabelStep =
+    dailyLabelCount > 1 ? (dailyChartDates.length - 1) / (dailyLabelCount - 1) : 0;
+  const dailyAxisXLabels = Array.from({ length: dailyLabelCount }, (_, index) =>
+    Math.round(index * dailyLabelStep),
+  )
+    .filter((index, position, list) => list.indexOf(index) === position)
+    .filter((index) => dailyChartDates[index])
+    .map((index) => formatDateDisplay(dailyChartDates[index]));
 
   const hasAccounts = accounts.length > 0;
   const hasTransactions = transactions.length > 0;
@@ -225,15 +244,6 @@ export default function ReportsPage() {
               value={formatCurrency(expenses, displayCurrency)}
               footnote="Last 30 days"
             />
-            <KpiCard
-              label="Daily average"
-              value={
-                isDailyTotalsLoading || dailyTotalsError
-                  ? "—"
-                  : formatCurrency(dailyAverage, displayCurrency)
-              }
-              footnote={`Range ${formatDateDisplay(range.from)} - ${formatDateDisplay(range.to)}`}
-            />
           </div>
           <div className="card chart-card">
             <div className="chart-header">
@@ -263,10 +273,20 @@ export default function ReportsPage() {
                   labels={dailyChartDates}
                   formatLabel={formatDateDisplay}
                   formatValue={(value) => formatCurrency(value, displayCurrency)}
-                  showAxisLabels
+                  showAxisLabels={false}
                 />
                 <span className="chart-axis-title y">Amount</span>
                 <span className="chart-axis-title x">Date</span>
+                <div className="chart-axis-y">
+                  {dailyAxisYLabels.map((label, index) => (
+                    <span key={`${label}-${index}`}>{label}</span>
+                  ))}
+                </div>
+                <div className="chart-axis-x">
+                  {dailyAxisXLabels.map((label, index) => (
+                    <span key={`${label}-${index}`}>{label}</span>
+                  ))}
+                </div>
               </div>
             )}
           </div>

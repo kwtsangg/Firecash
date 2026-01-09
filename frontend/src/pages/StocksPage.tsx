@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
 import { BarChart, DonutChart, LineChart } from "../components/Charts";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
@@ -199,6 +200,17 @@ export default function StocksPage() {
   const [performanceMetrics, setPerformanceMetrics] = useState<AssetPerformance[]>([]);
   const [assetDataSource, setAssetDataSource] = useState("stooq");
   const [assetRefreshCadence, setAssetRefreshCadence] = useState("daily");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const createParam = searchParams.get("create");
+
+  useEffect(() => {
+    if (createParam === "holding") {
+      setIsHoldingOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete("create");
+      setSearchParams(next, { replace: true });
+    }
+  }, [createParam, searchParams, setSearchParams]);
 
   const loadData = useCallback(async () => {
     let isMounted = true;

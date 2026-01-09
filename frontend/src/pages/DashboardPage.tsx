@@ -143,6 +143,20 @@ export default function DashboardPage() {
     setToast({ title, description });
   }, []);
 
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ path?: string }>).detail;
+      if (detail?.path === "/api/dashboard") {
+        showToast(
+          "Using cached dashboard data",
+          "We are pacing requests to avoid rate limits. We will refresh shortly.",
+        );
+      }
+    };
+    window.addEventListener("firecash:rate-limit-cache", handler);
+    return () => window.removeEventListener("firecash:rate-limit-cache", handler);
+  }, [showToast]);
+
   const formatFailureReason = useCallback((error: unknown) => {
     if (error instanceof ApiError) {
       const retryNotice =

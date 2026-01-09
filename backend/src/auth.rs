@@ -433,13 +433,200 @@ async fn seed_demo_data(
     .await
     .map_err(internal_error)?;
 
-    if existing_accounts > 0 {
+    let existing_assets: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint
+        FROM assets
+        WHERE account_id IN (
+            SELECT id
+            FROM accounts
+            WHERE user_id = $1
+        )
+        "#,
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+    .map_err(internal_error)?;
+
+    let existing_transactions: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint
+        FROM transactions
+        WHERE account_id IN (
+            SELECT id
+            FROM accounts
+            WHERE user_id = $1
+        )
+        "#,
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+    .map_err(internal_error)?;
+
+    let existing_price_history: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint
+        FROM price_history
+        WHERE asset_id IN (
+            SELECT id
+            FROM assets
+            WHERE account_id IN (
+                SELECT id
+                FROM accounts
+                WHERE user_id = $1
+            )
+        )
+        "#,
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+    .map_err(internal_error)?;
+
+    let existing_fx_rates: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint
+        FROM fx_rates
+        "#,
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(internal_error)?;
+
+    let needs_reseed = existing_accounts < 2
+        || existing_assets < 1
+        || existing_transactions < 3
+        || existing_price_history < 1;
+
+    if !needs_reseed {
+        if existing_fx_rates < 1 {
+            sqlx::query(
+                r#"
+                INSERT INTO fx_rates (id, base_currency, quote_currency, rate, recorded_on)
+                VALUES ($1, $2, $3, $4, CURRENT_DATE)
+                ON CONFLICT DO NOTHING
+                "#,
+            )
+            .bind(Uuid::new_v4())
+            .bind("USD")
+            .bind("USD")
+            .bind(1.0_f64)
+            .execute(pool)
+            .await
+            .map_err(internal_error)?;
+        }
         return Ok(());
     }
 
     let checking_id = Uuid::new_v4();
     let brokerage_id = Uuid::new_v4();
     let group_id = Uuid::new_v4();
+
+    let mut tx = pool.begin().await.map_err(internal_error)?;
+
+    sqlx::query(
+        r#"
+        DELETE FROM price_history
+        WHERE asset_id IN (
+            SELECT id
+            FROM assets
+            WHERE account_id IN (
+                SELECT id
+                FROM accounts
+                WHERE user_id = $1
+            )
+        )
+        "#,
+    )
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(internal_error)?;
+
+    sqlx::query(
+        r#"
+        DELETE FROM assets
+        WHERE account_id IN (
+            SELECT id
+            FROM accounts
+            WHERE user_id = $1
+        )
+        "#,
+    )
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(internal_error)?;
+
+    sqlx::query(
+        r#"
+        DELETE FROM transactions
+        WHERE account_id IN (
+            SELECT id
+            FROM accounts
+            WHERE user_id = $1
+        )
+        "#,
+    )
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(internal_error)?;
+
+    sqlx::query(
+        r#"
+        DELETE FROM account_group_members
+        WHERE account_id IN (
+            SELECT id
+            FROM accounts
+            WHERE user_id = $1
+        )
+        OR group_id IN (
+            SELECT id
+            FROM account_groups
+            WHERE user_id = $1
+        )
+        "#,
+    )
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(internal_error)?;
+
+    sqlx::query(
+        r#"
+        DELETE FROM account_group_users
+        WHERE user_id = $1
+        "#,
+    )
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(internal_error)?;
+
+    sqlx::query(
+        r#"
+        DELETE FROM account_groups
+        WHERE user_id = $1
+        "#,
+    )
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(internal_error)?;
+
+    sqlx::query(
+        r#"
+        DELETE FROM accounts
+        WHERE user_id = $1
+        "#,
+    )
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(internal_error)?;
 
     sqlx::query(
         r#"
@@ -450,7 +637,7 @@ async fn seed_demo_data(
     .bind(group_id)
     .bind(user_id)
     .bind("Investments")
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .map_err(internal_error)?;
 
@@ -463,7 +650,7 @@ async fn seed_demo_data(
     )
     .bind(group_id)
     .bind(user_id)
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .map_err(internal_error)?;
 
@@ -482,7 +669,7 @@ async fn seed_demo_data(
     .bind(user_id)
     .bind("Brokerage")
     .bind("USD")
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .map_err(internal_error)?;
 
@@ -494,7 +681,7 @@ async fn seed_demo_data(
     )
     .bind(group_id)
     .bind(brokerage_id)
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .map_err(internal_error)?;
 
@@ -511,7 +698,7 @@ async fn seed_demo_data(
     .bind("Stock")
     .bind(12.0_f64)
     .bind("USD")
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .map_err(internal_error)?;
 
@@ -535,7 +722,7 @@ async fn seed_demo_data(
     .bind(asset_id)
     .bind(191.5_f64)
     .bind("USD")
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .map_err(internal_error)?;
 
@@ -565,7 +752,7 @@ async fn seed_demo_data(
     .bind("USD")
     .bind("expense")
     .bind("Utilities")
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .map_err(internal_error)?;
 
@@ -580,9 +767,11 @@ async fn seed_demo_data(
     .bind("USD")
     .bind("USD")
     .bind(1.0_f64)
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .map_err(internal_error)?;
+
+    tx.commit().await.map_err(internal_error)?;
 
     Ok(())
 }

@@ -18,9 +18,11 @@ import { del, get, post, put } from "../utils/apiClient";
 import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
 import {
   formatDateDisplay,
+  formatDateInputValue,
   getDefaultRange,
   parseDateInput,
   toDateInputValue,
+  toIsoDateInput,
   toIsoDateTime,
 } from "../utils/date";
 import { formatApiErrorDetail, getFriendlyErrorMessage } from "../utils/errorMessages";
@@ -89,7 +91,9 @@ export default function TransactionsPage() {
   const [transactionAccount, setTransactionAccount] = useState("");
   const [transactionType, setTransactionType] = useState("Income");
   const [transactionAmount, setTransactionAmount] = useState("");
-  const [transactionDate, setTransactionDate] = useState(() => toDateInputValue(new Date()));
+  const [transactionDate, setTransactionDate] = useState(() =>
+    formatDateInputValue(toDateInputValue(new Date()))
+  );
   const [transactionCurrency, setTransactionCurrency] = useState("USD");
   const [transactionCategory, setTransactionCategory] = useState("General");
   const [transactionMerchant, setTransactionMerchant] = useState("");
@@ -434,12 +438,18 @@ export default function TransactionsPage() {
       showToast("Missing account", "Select an account to save this transaction.");
       return;
     }
-    const accountName = accounts.find((account) => account.id === transactionAccount)?.name ?? "Unknown";
+    const accountName =
+      accounts.find((account) => account.id === transactionAccount)?.name ?? "Unknown";
+    const normalizedDate = toIsoDateInput(transactionDate);
+    if (!normalizedDate) {
+      showToast("Invalid date", "Use the YYYY/MM/DD format to save this transaction.");
+      return;
+    }
     const tempId = `temp-${Date.now()}`;
     const optimisticRow: TransactionRow = {
       id: tempId,
       accountId: transactionAccount,
-      date: transactionDate,
+      date: normalizedDate,
       account: accountName,
       type: transactionType,
       category: transactionCategory,
@@ -461,7 +471,7 @@ export default function TransactionsPage() {
         category: transactionCategory,
         merchant: transactionMerchant.trim() ? transactionMerchant.trim() : null,
         description: null,
-        occurred_at: toIsoDateTime(transactionDate),
+        occurred_at: toIsoDateTime(normalizedDate),
       });
       setTransactions((prev) =>
         prev.map((row) =>
@@ -818,10 +828,15 @@ export default function TransactionsPage() {
           <label>
             Occurred on
             <input
-              type="date"
+              type="text"
+              inputMode="numeric"
+              placeholder="YYYY/MM/DD"
               value={transactionDate}
-              onChange={(event) => setTransactionDate(event.target.value)}
+              onChange={(event) =>
+                setTransactionDate(formatDateInputValue(event.target.value))
+              }
             />
+            <div className="input-helper">Format: YYYY/MM/DD</div>
           </label>
         </div>
       </Modal>

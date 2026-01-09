@@ -8,10 +8,6 @@ import LoadingSkeleton from "../components/LoadingSkeleton";
 import Modal from "../components/Modal";
 import { useCurrency } from "../components/CurrencyContext";
 import { useSelection } from "../components/SelectionContext";
-import {
-  fetchAccountGroupMemberships,
-  fetchAccountGroups,
-} from "../api/accountGroups";
 import { fetchPreferences } from "../api/preferences";
 import { ApiError, get, post } from "../utils/apiClient";
 import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
@@ -79,6 +75,18 @@ type FxRate = {
   recorded_on: string;
 };
 
+type DashboardResponse = {
+  accounts: Account[];
+  groups: AccountGroup[];
+  memberships: AccountGroupMembership[];
+  assets: Asset[];
+  transactions: Transaction[];
+  history: HistoryPoint[];
+  totals: TotalsResponse | null;
+  price_status: AssetPriceStatus | null;
+  fx_rates: FxRate[];
+};
+
 type AssetDisplay = {
   name: string;
   amount: number;
@@ -137,7 +145,11 @@ export default function DashboardPage() {
 
   const formatFailureReason = (error: unknown) => {
     if (error instanceof ApiError) {
-      return `HTTP ${error.status} — ${error.message}`;
+      const retryNotice =
+        error.status === 429 && typeof error.retryAfterSeconds === "number"
+          ? ` Retry in ${error.retryAfterSeconds}s.`
+          : "";
+      return `HTTP ${error.status} — ${error.message}.${retryNotice}`.trim();
     }
     if (error instanceof Error) {
       return error.message;
@@ -155,107 +167,39 @@ export default function DashboardPage() {
       setError(null);
       setErrorDetails([]);
       try {
-        const results = await Promise.allSettled([
-          get<Account[]>("/api/accounts"),
-          fetchAccountGroups(),
-          fetchAccountGroupMemberships(),
-          get<Asset[]>("/api/assets"),
-          get<Transaction[]>("/api/transactions"),
-          get<HistoryPoint[]>("/api/history"),
-          get<TotalsResponse>("/api/totals"),
-          get<AssetPriceStatus>("/api/assets/price-status"),
-          get<FxRate[]>("/api/fx-rates"),
-        ]);
-        const failures: string[] = [];
-        const failureDetails: string[] = [];
-        const resolve = <T,>(
-          result: PromiseSettledResult<T>,
-          fallback: T,
-          label: string,
-          isValid?: (value: T) => boolean,
-          invalidMessage = "Response was empty or invalid",
-        ) => {
-          if (result.status === "fulfilled") {
-            if (!isValid || isValid(result.value)) {
-              return result.value;
-            }
-            failures.push(label);
-            failureDetails.push(`${label}: ${invalidMessage}`);
-            return fallback;
-          }
-          failures.push(label);
-          failureDetails.push(`${label}: ${formatFailureReason(result.reason)}`);
-          return fallback;
-        };
-        const accountsResponse = resolve(
-          results[0],
-          [] as Account[],
-          "accounts",
-          Array.isArray,
-        );
-        const groupsResponse = resolve(
-          results[1],
-          [] as AccountGroup[],
-          "groups",
-          Array.isArray,
-        );
-        const membershipResponse = resolve(
-          results[2],
-          [] as AccountGroupMembership[],
-          "memberships",
-          Array.isArray,
-        );
-        const assetsResponse = resolve(results[3], [] as Asset[], "assets", Array.isArray);
-        const transactionsResponse = resolve(
-          results[4],
-          [] as Transaction[],
-          "transactions",
-          Array.isArray,
-        );
-        const historyResponse = resolve(
-          results[5],
-          [] as HistoryPoint[],
-          "history",
-          Array.isArray,
-        );
-        const totalsResponse = resolve(
-          results[6],
-          null as TotalsResponse | null,
-          "totals",
-          (value) => value === null || isRecord(value),
-        );
-        const priceStatusResponse = resolve(
-          results[7],
-          null as AssetPriceStatus | null,
-          "price status",
-          (value) => value === null || isRecord(value),
-        );
-        const fxRatesResponse = resolve(
-          results[8],
-          [] as FxRate[],
-          "fx rates",
-          Array.isArray,
-        );
-        const normalizedFxRates = Array.isArray(fxRatesResponse) ? fxRatesResponse : [];
+        const dashboardResponse = await get<DashboardResponse>("/api/dashboard");
+        const accountsResponse = Array.isArray(dashboardResponse.accounts)
+          ? dashboardResponse.accounts
+          : [];
+        const groupsResponse = Array.isArray(dashboardResponse.groups)
+          ? dashboardResponse.groups
+          : [];
+        const membershipResponse = Array.isArray(dashboardResponse.memberships)
+          ? dashboardResponse.memberships
+          : [];
+        const assetsResponse = Array.isArray(dashboardResponse.assets)
+          ? dashboardResponse.assets
+          : [];
+        const transactionsResponse = Array.isArray(dashboardResponse.transactions)
+          ? dashboardResponse.transactions
+          : [];
+        const historyResponse = Array.isArray(dashboardResponse.history)
+          ? dashboardResponse.history
+          : [];
+        const totalsResponse = isRecord(dashboardResponse.totals)
+          ? dashboardResponse.totals
+          : null;
+        const priceStatusResponse = isRecord(dashboardResponse.price_status)
+          ? dashboardResponse.price_status
+          : null;
+        const normalizedFxRates = Array.isArray(dashboardResponse.fx_rates)
+          ? dashboardResponse.fx_rates
+          : [];
 
         if (!isMounted) {
           return;
         }
-        if (failures.length === results.length) {
-          setError("Unable to load dashboard data.");
-          setErrorDetails([
-            "Every dashboard request failed. Confirm the API is running and your session is valid.",
-            ...failureDetails,
-          ]);
-          return;
-        }
 
-        if (failures.length > 0) {
-          showToast(
-            "Some data is unavailable",
-            `We could not load: ${failures.join(", ")}.`,
-          );
-        }
         const accountMap = new Map(accountsResponse.map((item) => [item.id, item.name]));
         const mappedTransactions = transactionsResponse.map((item) => ({
           id: item.id,
@@ -280,10 +224,15 @@ export default function DashboardPage() {
         setTransactionAccount(accountsResponse[0]?.id ?? "");
       } catch (err) {
         if (isMounted) {
+          let retryMessage: string | null = null;
+          if (err instanceof ApiError && err.status === 429 && err.retryAfterSeconds !== undefined) {
+            retryMessage = `Retry in ${err.retryAfterSeconds}s.`;
+          }
           setError("Unable to load dashboard data.");
           setErrorDetails([
             "We hit an unexpected error while loading the dashboard.",
             formatFailureReason(err),
+            ...(retryMessage ? [retryMessage] : []),
           ]);
         }
       } finally {
@@ -296,7 +245,7 @@ export default function DashboardPage() {
     return () => {
       isMounted = false;
     };
-  }, [showToast]);
+  }, [formatFailureReason, isRecord]);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;

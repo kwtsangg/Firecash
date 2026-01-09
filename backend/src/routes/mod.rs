@@ -4,6 +4,7 @@ pub mod api_tokens;
 pub mod assets;
 pub mod backup;
 pub mod admin;
+pub mod dashboard;
 pub mod integrations;
 pub mod metrics;
 pub mod plugins;

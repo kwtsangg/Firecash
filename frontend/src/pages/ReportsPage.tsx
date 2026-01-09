@@ -1,13 +1,26 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { LineChart } from "../components/Charts";
+import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import EmptyState from "../components/EmptyState";
 import ErrorState from "../components/ErrorState";
 import KpiCard from "../components/KpiCard";
 import LoadingState from "../components/LoadingState";
 import { useCurrency } from "../components/CurrencyContext";
-import { ReportSnapshot, fetchReportSnapshot } from "../api/reports";
+import {
+  DailyTransactionTotal,
+  ReportSnapshot,
+  fetchDailyExpenseTotals,
+  fetchReportSnapshot,
+} from "../api/reports";
 import { convertAmount, formatCurrency } from "../utils/currency";
-import { formatDateDisplay } from "../utils/date";
+import {
+  addDays,
+  formatDateDisplay,
+  getDefaultRange,
+  parseDateInput,
+  toDateInputValue,
+} from "../utils/date";
 import { formatApiErrorDetail } from "../utils/errorMessages";
 import { pageTitles } from "../utils/pageTitles";
 import { usePageMeta } from "../utils/pageMeta";
@@ -20,6 +33,11 @@ export default function ReportsPage() {
   const [error, setError] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<string[]>([]);
   const [snapshot, setSnapshot] = useState<ReportSnapshot | null>(null);
+  const [range, setRange] = useState<DateRange>(() => getDefaultRange(30));
+  const [dailyTotals, setDailyTotals] = useState<DailyTransactionTotal[]>([]);
+  const [dailyTotalsError, setDailyTotalsError] = useState<string | null>(null);
+  const [dailyTotalsErrorDetails, setDailyTotalsErrorDetails] = useState<string[]>([]);
+  const [isDailyTotalsLoading, setIsDailyTotalsLoading] = useState(false);
 
   const loadReports = useCallback(async () => {
     setIsLoading(true);
@@ -37,9 +55,32 @@ export default function ReportsPage() {
     }
   }, []);
 
+  const loadDailyTotals = useCallback(async () => {
+    setIsDailyTotalsLoading(true);
+    setDailyTotalsError(null);
+    setDailyTotalsErrorDetails([]);
+    try {
+      const response = await fetchDailyExpenseTotals({
+        start_date: range.from,
+        end_date: range.to,
+      });
+      setDailyTotals(response);
+    } catch (err) {
+      setDailyTotalsError("Unable to load daily expenses right now.");
+      const detail = formatApiErrorDetail(err);
+      setDailyTotalsErrorDetails(detail ? [detail] : []);
+    } finally {
+      setIsDailyTotalsLoading(false);
+    }
+  }, [range.from, range.to]);
+
   useEffect(() => {
     loadReports();
   }, [loadReports]);
+
+  useEffect(() => {
+    loadDailyTotals();
+  }, [loadDailyTotals]);
 
   const accounts = snapshot?.accounts ?? [];
   const transactions = snapshot?.transactions ?? [];
@@ -76,6 +117,39 @@ export default function ReportsPage() {
       .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))
       .slice(0, 5);
   }, [transactions]);
+
+  const dailyTotalsByDate = useMemo(() => {
+    const totalsByDate = new Map<string, number>();
+    dailyTotals.forEach((entry) => {
+      const converted = convertAmount(entry.total, entry.currency_code, displayCurrency);
+      totalsByDate.set(entry.date, (totalsByDate.get(entry.date) ?? 0) + converted);
+    });
+    return totalsByDate;
+  }, [dailyTotals, displayCurrency]);
+
+  const dailyChartDates = useMemo(() => {
+    const dates: string[] = [];
+    const start = parseDateInput(range.from);
+    const end = parseDateInput(range.to);
+    let current = start;
+    while (current <= end) {
+      dates.push(toDateInputValue(current));
+      current = addDays(current, 1);
+    }
+    return dates;
+  }, [range.from, range.to]);
+
+  const dailyChartPoints = useMemo(() => {
+    return dailyChartDates.map((date) => dailyTotalsByDate.get(date) ?? 0);
+  }, [dailyChartDates, dailyTotalsByDate]);
+
+  const dailyAverage = useMemo(() => {
+    if (dailyChartPoints.length === 0) {
+      return 0;
+    }
+    const total = dailyChartPoints.reduce((sum, value) => sum + value, 0);
+    return total / dailyChartPoints.length;
+  }, [dailyChartPoints]);
 
   const hasAccounts = accounts.length > 0;
   const hasTransactions = transactions.length > 0;
@@ -151,6 +225,50 @@ export default function ReportsPage() {
               value={formatCurrency(expenses, displayCurrency)}
               footnote="Last 30 days"
             />
+            <KpiCard
+              label="Daily average"
+              value={
+                isDailyTotalsLoading || dailyTotalsError
+                  ? "—"
+                  : formatCurrency(dailyAverage, displayCurrency)
+              }
+              footnote={`Range ${formatDateDisplay(range.from)} - ${formatDateDisplay(range.to)}`}
+            />
+          </div>
+          <div className="card chart-card">
+            <div className="chart-header">
+              <div>
+                <h3>Daily expenses</h3>
+                <p className="muted">
+                  Daily expense totals in {displayCurrency} for the selected range.
+                </p>
+              </div>
+              <DateRangePicker value={range} onChange={setRange} />
+            </div>
+            {isDailyTotalsLoading ? (
+              <LoadingState
+                title="Loading daily expenses"
+                description="Summarizing daily expense totals."
+              />
+            ) : dailyTotalsError ? (
+              <ErrorState
+                headline={dailyTotalsError}
+                details={dailyTotalsErrorDetails}
+                onRetry={loadDailyTotals}
+              />
+            ) : (
+              <div className="chart-surface chart-axis-surface">
+                <LineChart
+                  points={dailyChartPoints}
+                  labels={dailyChartDates}
+                  formatLabel={formatDateDisplay}
+                  formatValue={(value) => formatCurrency(value, displayCurrency)}
+                  showAxisLabels
+                />
+                <span className="chart-axis-title y">Amount</span>
+                <span className="chart-axis-title x">Date</span>
+              </div>
+            )}
           </div>
           <div className="card list-card">
             <div className="list-row list-header columns-4">

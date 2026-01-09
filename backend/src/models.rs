@@ -105,6 +105,13 @@ pub struct UpdateTransactionResponse {
     pub occurred_at: DateTime<Utc>,
 }
 
+#[derive(Serialize, FromRow)]
+pub struct DailyTransactionTotal {
+    pub date: NaiveDate,
+    pub currency_code: String,
+    pub total: f64,
+}
+
 #[derive(Serialize, Deserialize, FromRow)]
 pub struct RecurringTransaction {
     pub id: Uuid,

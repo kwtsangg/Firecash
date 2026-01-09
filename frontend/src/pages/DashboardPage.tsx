@@ -11,7 +11,14 @@ import { useSelection } from "../components/SelectionContext";
 import { fetchPreferences } from "../api/preferences";
 import { ApiError, get, post } from "../utils/apiClient";
 import { convertAmount, formatCurrency, supportedCurrencies } from "../utils/currency";
-import { formatDateDisplay, getDefaultRange, toDateInputValue, toIsoDateTime } from "../utils/date";
+import {
+  formatDateDisplay,
+  formatDateInputValue,
+  getDefaultRange,
+  toDateInputValue,
+  toIsoDateInput,
+  toIsoDateTime,
+} from "../utils/date";
 import { pageTitles } from "../utils/pageTitles";
 import { usePageMeta } from "../utils/pageMeta";
 
@@ -118,7 +125,9 @@ export default function DashboardPage() {
   const [transactionAccount, setTransactionAccount] = useState("");
   const [transactionType, setTransactionType] = useState("Income");
   const [transactionAmount, setTransactionAmount] = useState("");
-  const [transactionDate, setTransactionDate] = useState(() => toDateInputValue(new Date()));
+  const [transactionDate, setTransactionDate] = useState(() =>
+    formatDateInputValue(toDateInputValue(new Date()))
+  );
   const [transactionNotes, setTransactionNotes] = useState("");
   const [transactionCurrency, setTransactionCurrency] = useState("USD");
   const [categories, setCategories] = useState<string[]>([]);
@@ -509,7 +518,13 @@ export default function DashboardPage() {
       showToast("Missing account", "Select an account to save this transaction.");
       return;
     }
-    const accountName = accounts.find((account) => account.id === transactionAccount)?.name ?? "Unknown";
+    const accountName =
+      accounts.find((account) => account.id === transactionAccount)?.name ?? "Unknown";
+    const normalizedDate = toIsoDateInput(transactionDate);
+    if (!normalizedDate) {
+      showToast("Invalid date", "Use the YYYY/MM/DD format to save this transaction.");
+      return;
+    }
     const tempId = `temp-${Date.now()}`;
     const optimisticTransaction: TransactionDisplay = {
       id: tempId,
@@ -517,7 +532,7 @@ export default function DashboardPage() {
       type: transactionType,
       amount,
       currency: transactionCurrency,
-      date: transactionDate,
+      date: normalizedDate,
       category: transactionCategory,
       notes: transactionNotes || "Manual entry",
     };
@@ -534,7 +549,7 @@ export default function DashboardPage() {
         category: transactionCategory,
         merchant: null,
         description: transactionNotes || null,
-        occurred_at: toIsoDateTime(transactionDate),
+        occurred_at: toIsoDateTime(normalizedDate),
       });
       setTransactions((prev) =>
         prev.map((transaction) =>
@@ -753,10 +768,15 @@ export default function DashboardPage() {
             <label>
               Date
               <input
-                type="date"
+                type="text"
+                inputMode="numeric"
+                placeholder="YYYY/MM/DD"
                 value={transactionDate}
-                onChange={(event) => setTransactionDate(event.target.value)}
+                onChange={(event) =>
+                  setTransactionDate(formatDateInputValue(event.target.value))
+                }
               />
+              <div className="input-helper">Format: YYYY/MM/DD</div>
             </label>
             <label className="full-width">
               Notes
@@ -910,14 +930,19 @@ export default function DashboardPage() {
               </div>
             ) : null}
           </label>
-          <label>
-            Date
-            <input
-              type="date"
-              value={transactionDate}
-              onChange={(event) => setTransactionDate(event.target.value)}
-            />
-          </label>
+              <label>
+                Date
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="YYYY/MM/DD"
+                  value={transactionDate}
+                  onChange={(event) =>
+                    setTransactionDate(formatDateInputValue(event.target.value))
+                  }
+                />
+                <div className="input-helper">Format: YYYY/MM/DD</div>
+              </label>
           <label>
             Notes
             <input

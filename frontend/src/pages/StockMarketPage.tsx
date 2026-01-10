@@ -125,60 +125,69 @@ export default function StockMarketPage() {
     return symbols.filter((symbol) => symbol.includes(upper));
   }, [query, symbols]);
 
-  const injectAdvancedChart = useCallback(
-    (symbol: string) => {
-      if (!chartContainerRef.current) {
+  const injectWidget = useCallback(
+    (container: HTMLDivElement | null, scriptSrc: string, config: Record<string, unknown>) => {
+      if (!container) {
         return;
       }
-      chartContainerRef.current.innerHTML = "";
+      container.innerHTML = "";
+      const widget = document.createElement("div");
+      widget.className = "tradingview-widget-container__widget";
       const script = document.createElement("script");
-      script.src =
-        "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+      script.src = scriptSrc;
       script.async = true;
-      script.innerHTML = JSON.stringify({
-        autosize: true,
-        symbol,
-        interval: "D",
-        timezone: "Etc/UTC",
-        theme: "dark",
-        style: "1",
-        locale: "en",
-        allow_symbol_change: false,
-        save_image: false,
-        support_host: "https://www.tradingview.com",
-        hide_side_toolbar: false,
-        hide_top_toolbar: false,
-      });
-      chartContainerRef.current.appendChild(script);
+      script.innerHTML = JSON.stringify(config);
+      container.appendChild(widget);
+      container.appendChild(script);
     },
-    [chartContainerRef],
+    [],
+  );
+
+  const injectAdvancedChart = useCallback(
+    (symbol: string) => {
+      injectWidget(
+        chartContainerRef.current,
+        "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js",
+        {
+          autosize: true,
+          symbol,
+          interval: "D",
+          timezone: "Etc/UTC",
+          theme: "dark",
+          style: "1",
+          locale: "en",
+          allow_symbol_change: false,
+          save_image: false,
+          support_host: "https://www.tradingview.com",
+          hide_side_toolbar: false,
+          hide_top_toolbar: false,
+        },
+      );
+    },
+    [injectWidget],
   );
 
   const injectHeatmap = useCallback(() => {
-    if (!heatmapContainerRef.current) {
-      return;
-    }
-    heatmapContainerRef.current.innerHTML = "";
-    const script = document.createElement("script");
-    script.src = "https://s3.tradingview.com/external-embedding/embed-widget-heatmap.js";
-    script.async = true;
-    script.innerHTML = JSON.stringify({
-      dataSource: "SPX500",
-      grouping: "sector",
-      blockSize: "market_cap_basic",
-      blockColor: "change",
-      locale: "en",
-      symbolUrl: "",
-      colorTheme: "dark",
-      hasTopBar: false,
-      isDataSetEnabled: false,
-      isZoomEnabled: true,
-      hasSymbolTooltip: true,
-      width: "100%",
-      height: "100%",
-    });
-    heatmapContainerRef.current.appendChild(script);
-  }, []);
+    injectWidget(
+      heatmapContainerRef.current,
+      "https://s3.tradingview.com/external-embedding/embed-widget-heatmap.js",
+      {
+        dataSource: "SPX500",
+        grouping: "sector",
+        blockSize: "market_cap_basic",
+        blockColor: "change",
+        locale: "en",
+        symbolUrl: "",
+        colorTheme: "dark",
+        hasTopBar: false,
+        isDataSetEnabled: false,
+        isZoomEnabled: true,
+        hasSymbolTooltip: true,
+        width: "100%",
+        height: "100%",
+      },
+    );
+  }, [injectWidget]);
 
   useEffect(() => {
     if (!selectedSymbol) {
@@ -278,7 +287,10 @@ export default function StockMarketPage() {
             </a>
           </div>
           <div className="heatmap-widget chart-widget-surface">
-            <div className="tradingview-widget" ref={heatmapContainerRef} />
+            <div
+              className="tradingview-widget tradingview-widget-container"
+              ref={heatmapContainerRef}
+            />
           </div>
         </div>
       </div>
@@ -343,7 +355,10 @@ export default function StockMarketPage() {
         </div>
         <div className="chart-surface chart-widget-surface">
           {selectedSymbol ? (
-            <div className="tradingview-widget" ref={chartContainerRef} />
+            <div
+              className="tradingview-widget tradingview-widget-container"
+              ref={chartContainerRef}
+            />
           ) : (
             <EmptyState
               title="Select a symbol"

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
-import { BarChart, DonutChart, LineChart } from "../components/Charts";
+import { BarChart, DonutChart } from "../components/Charts";
+import ChartPanel from "../components/ChartPanel";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import EmptyState from "../components/EmptyState";
 import ErrorState from "../components/ErrorState";
@@ -624,21 +625,6 @@ export default function StocksPage() {
   const filteredHoldings = holdings.filter((holding) => matchesSelection(holding.account));
   const filteredTrades = trades.filter((trade) => matchesSelection(trade.account));
   const selectionScale = Math.max(0.4, filteredHoldings.length / holdings.length || 1);
-  const rangeDays = Math.max(
-    1,
-    Math.round(
-      (new Date(range.to).getTime() - new Date(range.from).getTime()) / 86400000,
-    ),
-  );
-  const labelCount = Math.min(performanceSeries.length || 1, rangeDays <= 45 ? 6 : 5);
-  const labelStep =
-    labelCount > 1 ? (performanceSeries.length - 1) / (labelCount - 1) : 0;
-  const performanceXLabels = Array.from({ length: labelCount }, (_, index) =>
-    Math.round(index * labelStep),
-  )
-    .filter((index, position, list) => list.indexOf(index) === position)
-    .filter((index) => performanceSeries[index])
-    .map((index) => formatDateDisplay(performanceSeries[index].date));
   const tooltipDates = performanceSeries.map((point) => point.date);
 
   const dividendBars = useMemo(() => {
@@ -742,23 +728,6 @@ export default function StocksPage() {
   }, [performanceSeries, selectionScale, totalEquity]);
 
   const performancePoints = equitySeries.map((point) => point.value);
-  const performanceMax =
-    performancePoints.length > 0 ? Math.max(...performancePoints) : 0;
-  const performanceMin =
-    performancePoints.length > 0 ? Math.min(...performancePoints) : 0;
-  const rangeSpan = performanceMax - performanceMin;
-  const safeSpan = rangeSpan === 0 ? Math.max(1, Math.abs(performanceMax) * 0.1) : rangeSpan;
-  const topValue = rangeSpan === 0 ? performanceMax + safeSpan / 2 : performanceMax;
-  const bottomValue = rangeSpan === 0 ? performanceMin - safeSpan / 2 : performanceMin;
-  const performanceMidpoint = Math.round((topValue + bottomValue) / 2);
-  const performanceYLabels = [
-    formatCurrency(topValue, displayCurrency),
-    formatCurrency(Math.round(topValue - safeSpan * 0.25), displayCurrency),
-    formatCurrency(performanceMidpoint, displayCurrency),
-    formatCurrency(Math.round(bottomValue + safeSpan * 0.25), displayCurrency),
-    formatCurrency(bottomValue, displayCurrency),
-  ];
-
   const dayChange = filteredHoldings.reduce((sum, holding) => {
     if (!holding.price || holding.change === null) {
       return sum;
@@ -1232,45 +1201,42 @@ export default function StocksPage() {
           </button>
         </div>
       </div>
-      <div className="card chart-card">
-        <div className="chart-header">
-          <div>
-            <h3>Portfolio performance</h3>
-            <p className="muted">Equity value within the selected range.</p>
+      {isFiltering ? (
+        <div className="card chart-card">
+          <div className="chart-header">
+            <div>
+              <h3>Portfolio performance</h3>
+              <p className="muted">Equity value within the selected range.</p>
+            </div>
+            <button
+              className="pill"
+              onClick={() => showToast("Benchmark applied", "Comparing to S&P 500.")}
+            >
+              Compare Benchmark
+            </button>
           </div>
-          <button
-            className="pill"
-            onClick={() => showToast("Benchmark applied", "Comparing to S&P 500.")}
-          >
-            Compare Benchmark
-          </button>
-        </div>
-        {isFiltering ? (
           <LoadingSkeleton label="Refreshing chart" lines={4} />
-        ) : (
-          <div className="chart-surface chart-axis-surface">
-            <LineChart
-              points={performancePoints}
-              labels={tooltipDates}
-              formatLabel={formatDateDisplay}
-              formatValue={(value) => formatCurrency(value, displayCurrency)}
-              showAxisLabels={false}
-            />
-            <span className="chart-axis-title y">Value</span>
-            <span className="chart-axis-title x">Date</span>
-            <div className="chart-axis-y">
-              {performanceYLabels.map((label) => (
-                <span key={label}>{label}</span>
-              ))}
-            </div>
-            <div className="chart-axis-x">
-              {performanceXLabels.map((label, index) => (
-                <span key={`${label}-${index}`}>{label}</span>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        <ChartPanel
+          title="Portfolio performance"
+          description="Equity value within the selected range."
+          points={performancePoints}
+          labels={tooltipDates}
+          formatLabel={formatDateDisplay}
+          formatValue={(value) => formatCurrency(value, displayCurrency)}
+          axisTitleX="Date"
+          axisTitleY="Value"
+          headerExtras={
+            <button
+              className="pill"
+              onClick={() => showToast("Benchmark applied", "Comparing to S&P 500.")}
+            >
+              Compare Benchmark
+            </button>
+          }
+        />
+      )}
       <div className="split-grid">
         <div className="card">
           <h3>Income cashflow</h3>

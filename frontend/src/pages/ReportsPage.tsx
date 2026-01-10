@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LineChart } from "../components/Charts";
+import ChartPanel from "../components/ChartPanel";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import EmptyState from "../components/EmptyState";
 import ErrorState from "../components/ErrorState";
@@ -143,33 +143,6 @@ export default function ReportsPage() {
     return dailyChartDates.map((date) => dailyTotalsByDate.get(date) ?? 0);
   }, [dailyChartDates, dailyTotalsByDate]);
 
-  const dailyMax = dailyChartPoints.length > 0 ? Math.max(...dailyChartPoints) : 0;
-  const dailyMin = dailyChartPoints.length > 0 ? Math.min(...dailyChartPoints) : 0;
-  const dailyMidpoint = Math.round((dailyMax + dailyMin) / 2);
-  const dailyAxisYLabels = [
-    formatCurrency(dailyMax, displayCurrency),
-    formatCurrency(Math.round(dailyMax * 0.75), displayCurrency),
-    formatCurrency(dailyMidpoint, displayCurrency),
-    formatCurrency(Math.round(dailyMin + (dailyMax - dailyMin) * 0.25), displayCurrency),
-    formatCurrency(dailyMin, displayCurrency),
-  ];
-  const dailyRangeDays = Math.max(
-    1,
-    Math.round(
-      (parseDateInput(range.to).getTime() - parseDateInput(range.from).getTime()) /
-        86400000,
-    ),
-  );
-  const dailyLabelCount = Math.min(dailyChartDates.length || 1, dailyRangeDays <= 45 ? 6 : 5);
-  const dailyLabelStep =
-    dailyLabelCount > 1 ? (dailyChartDates.length - 1) / (dailyLabelCount - 1) : 0;
-  const dailyAxisXLabels = Array.from({ length: dailyLabelCount }, (_, index) =>
-    Math.round(index * dailyLabelStep),
-  )
-    .filter((index, position, list) => list.indexOf(index) === position)
-    .filter((index) => dailyChartDates[index])
-    .map((index) => formatDateDisplay(dailyChartDates[index]));
-
   const hasAccounts = accounts.length > 0;
   const hasTransactions = transactions.length > 0;
 
@@ -245,51 +218,52 @@ export default function ReportsPage() {
               footnote="Last 30 days"
             />
           </div>
-          <div className="card chart-card">
-            <div className="chart-header">
-              <div>
-                <h3>Daily expenses</h3>
-                <p className="muted">
-                  Daily expense totals in {displayCurrency} for the selected range.
-                </p>
+          {isDailyTotalsLoading ? (
+            <div className="card chart-card">
+              <div className="chart-header">
+                <div>
+                  <h3>Daily expenses</h3>
+                  <p className="muted">
+                    Daily expense totals in {displayCurrency} for the selected range.
+                  </p>
+                </div>
+                <DateRangePicker value={range} onChange={setRange} />
               </div>
-              <DateRangePicker value={range} onChange={setRange} />
-            </div>
-            {isDailyTotalsLoading ? (
               <LoadingState
                 title="Loading daily expenses"
                 description="Summarizing daily expense totals."
               />
-            ) : dailyTotalsError ? (
+            </div>
+          ) : dailyTotalsError ? (
+            <div className="card chart-card">
+              <div className="chart-header">
+                <div>
+                  <h3>Daily expenses</h3>
+                  <p className="muted">
+                    Daily expense totals in {displayCurrency} for the selected range.
+                  </p>
+                </div>
+                <DateRangePicker value={range} onChange={setRange} />
+              </div>
               <ErrorState
                 headline={dailyTotalsError}
                 details={dailyTotalsErrorDetails}
                 onRetry={loadDailyTotals}
               />
-            ) : (
-              <div className="chart-surface chart-axis-surface">
-                <LineChart
-                  points={dailyChartPoints}
-                  labels={dailyChartDates}
-                  formatLabel={formatDateDisplay}
-                  formatValue={(value) => formatCurrency(value, displayCurrency)}
-                  showAxisLabels={false}
-                />
-                <span className="chart-axis-title y">Amount</span>
-                <span className="chart-axis-title x">Date</span>
-                <div className="chart-axis-y">
-                  {dailyAxisYLabels.map((label, index) => (
-                    <span key={`${label}-${index}`}>{label}</span>
-                  ))}
-                </div>
-                <div className="chart-axis-x">
-                  {dailyAxisXLabels.map((label, index) => (
-                    <span key={`${label}-${index}`}>{label}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <ChartPanel
+              title="Daily expenses"
+              description={`Daily expense totals in ${displayCurrency} for the selected range.`}
+              points={dailyChartPoints}
+              labels={dailyChartDates}
+              formatLabel={formatDateDisplay}
+              formatValue={(value) => formatCurrency(value, displayCurrency)}
+              axisTitleX="Date"
+              axisTitleY="Amount"
+              headerExtras={<DateRangePicker value={range} onChange={setRange} />}
+            />
+          )}
           <div className="card list-card">
             <div className="list-row list-header columns-4">
               <span>Date</span>

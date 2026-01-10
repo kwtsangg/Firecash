@@ -8,6 +8,8 @@ type LineChartProps = {
   xLabels?: { label: string; position: number }[];
   yLabels?: { label: string; position: number }[];
   showAxisLabels?: boolean;
+  lineWidth?: number;
+  pointRadius?: number;
 };
 
 export function LineChart({
@@ -18,6 +20,8 @@ export function LineChart({
   xLabels = [],
   yLabels = [],
   showAxisLabels = true,
+  lineWidth = 2.2,
+  pointRadius = 2,
 }: LineChartProps) {
   if (points.length === 0) {
     return <div className="chart-empty">No data</div>;
@@ -226,7 +230,7 @@ export function LineChart({
           d={path}
           fill="none"
           stroke="url(#lineGradient)"
-          strokeWidth="3"
+          strokeWidth={lineWidth}
           strokeLinecap="round"
         />
         {activePoint ? (
@@ -249,7 +253,7 @@ export function LineChart({
               className="chart-point"
               cx={activePoint.x}
               cy={activePoint.y}
-              r="2.5"
+              r={pointRadius}
             />
           </g>
         ) : null}

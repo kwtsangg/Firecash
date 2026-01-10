@@ -418,6 +418,14 @@ textarea:focus-visible,
   pointer-events: none;
 }
 
+.heatmap-widget {
+  height: 520px;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(15, 18, 32, 0.8);
+}
+
 .cache-notice {
   min-height: 16px;
   font-size: 12px;

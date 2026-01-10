@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CandlestickChart } from "../components/Charts";
 import EmptyState from "../components/EmptyState";
 import ErrorState from "../components/ErrorState";
@@ -84,6 +84,7 @@ export default function StockMarketPage() {
   const [symbolsError, setSymbolsError] = useState<string | null>(null);
   const [symbolsErrorDetails, setSymbolsErrorDetails] = useState<string[]>([]);
   const [overview, setOverview] = useState<MarketOverviewItem[]>([]);
+  const heatmapContainerRef = useRef<HTMLDivElement | null>(null);
   const displayCurrency = selectedSymbol ? currencyFromSymbol(selectedSymbol) : "USD";
 
   const loadSymbols = useCallback(async () => {
@@ -134,6 +135,37 @@ export default function StockMarketPage() {
   const retryOverview = () => {
     loadOverview();
   };
+
+  useEffect(() => {
+    if (!heatmapContainerRef.current) {
+      return;
+    }
+    heatmapContainerRef.current.innerHTML = "";
+    const script = document.createElement("script");
+    script.src = "https://s3.tradingview.com/external-embedding/embed-widget-stock-heatmap.js";
+    script.async = true;
+    script.innerHTML = JSON.stringify({
+      colorTheme: "dark",
+      dataSource: "SPX500",
+      grouping: "sector",
+      blockSize: "market_cap_basic",
+      blockColor: "change",
+      locale: "en",
+      symbolUrl: "",
+      hasTopBar: true,
+      isDataSetEnabled: true,
+      isZoomEnabled: true,
+      hasSymbolTooltip: true,
+      width: "100%",
+      height: "100%",
+    });
+    heatmapContainerRef.current.appendChild(script);
+    return () => {
+      if (heatmapContainerRef.current) {
+        heatmapContainerRef.current.innerHTML = "";
+      }
+    };
+  }, []);
 
   const filteredSymbols = useMemo(() => {
     if (!query) {
@@ -197,11 +229,11 @@ export default function StockMarketPage() {
             </button>
             <a
               className="pill"
-              href="https://finviz.com/map.ashx"
+              href="https://www.tradingview.com/heatmap/stock/"
               target="_blank"
               rel="noreferrer"
             >
-              Open full heatmap
+              Open TradingView heatmap
             </a>
           </div>
         </div>
@@ -245,6 +277,15 @@ export default function StockMarketPage() {
             ))}
           </div>
         )}
+      </div>
+      <div className="card chart-card">
+        <div className="chart-header">
+          <div>
+            <h3>Market heatmap</h3>
+            <p className="muted">Sector performance powered by TradingView.</p>
+          </div>
+        </div>
+        <div className="heatmap-widget" ref={heatmapContainerRef} />
       </div>
       <div className="card">
         <div className="chart-header">

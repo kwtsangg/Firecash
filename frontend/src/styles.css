@@ -425,36 +425,6 @@ textarea:focus-visible,
   margin-top: 6px;
 }
 
-.heatmap-embed {
-  margin-top: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.heatmap-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.heatmap-frame {
-  width: 100%;
-  height: 420px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 16px;
-  background: #0f1220;
-}
-
-.heatmap-frame.is-hidden {
-  display: none;
-}
-
-.heatmap-fallback {
-  margin-bottom: 16px;
-}
 
 .chart-axis-title.y {
   left: 6px;

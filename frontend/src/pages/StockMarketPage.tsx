@@ -83,7 +83,6 @@ export default function StockMarketPage() {
   const [overviewErrorDetails, setOverviewErrorDetails] = useState<string[]>([]);
   const [symbolsError, setSymbolsError] = useState<string | null>(null);
   const [symbolsErrorDetails, setSymbolsErrorDetails] = useState<string[]>([]);
-  const [heatmapFailed, setHeatmapFailed] = useState(false);
   const [overview, setOverview] = useState<MarketOverviewItem[]>([]);
   const displayCurrency = selectedSymbol ? currencyFromSymbol(selectedSymbol) : "USD";
 
@@ -246,35 +245,6 @@ export default function StockMarketPage() {
             ))}
           </div>
         )}
-        <div className="heatmap-embed">
-          <div className="heatmap-header">
-            <div>
-              <h4>Finviz heatmap</h4>
-              <p className="muted">Live sector performance without leaving Firecash.</p>
-            </div>
-          </div>
-          {heatmapFailed ? (
-            <EmptyState
-              title="Heatmap unavailable"
-              description="Finviz blocked the embedded view. Open it in a new tab to view the map."
-              actionLabel="Open full heatmap"
-              onAction={() => window.open("https://finviz.com/map.ashx", "_blank")}
-              actionHint="We’ll keep trying to load the embed in the background."
-              className="heatmap-fallback"
-            />
-          ) : null}
-          <iframe
-            title="Finviz market heatmap"
-            src="/api/market/finviz-heatmap"
-            className={`heatmap-frame${heatmapFailed ? " is-hidden" : ""}`}
-            loading="lazy"
-            onLoad={() => setHeatmapFailed(false)}
-            onError={() => setHeatmapFailed(true)}
-          />
-          <p className="muted">
-            Having trouble loading? Use the "Open full heatmap" button above.
-          </p>
-        </div>
       </div>
       <div className="card">
         <div className="chart-header">

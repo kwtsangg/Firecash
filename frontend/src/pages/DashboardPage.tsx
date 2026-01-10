@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ActionToast, { ActionToastData } from "../components/ActionToast";
-import { LineChart } from "../components/Charts";
+import ChartPanel from "../components/ChartPanel";
 import DateRangePicker, { DateRange } from "../components/DateRangePicker";
 import EmptyState from "../components/EmptyState";
 import KpiCard from "../components/KpiCard";
@@ -743,30 +743,6 @@ export default function DashboardPage() {
   };
 
   const linePoints = lineSeries.map((point) => point.value);
-  const maxValue = linePoints.length > 0 ? Math.max(...linePoints) : 0;
-  const minValue = linePoints.length > 0 ? Math.min(...linePoints) : 0;
-  const midpointValue = Math.round((maxValue + minValue) / 2);
-  const axisYLabels = [
-    formatCurrency(maxValue, displayCurrency),
-    formatCurrency(Math.round(maxValue * 0.75), displayCurrency),
-    formatCurrency(midpointValue, displayCurrency),
-    formatCurrency(Math.round(minValue + (maxValue - minValue) * 0.25), displayCurrency),
-    formatCurrency(minValue, displayCurrency),
-  ];
-  const rangeDays = Math.max(
-    1,
-    Math.round(
-      (new Date(range.to).getTime() - new Date(range.from).getTime()) / 86400000,
-    ),
-  );
-  const labelCount = Math.min(lineSeries.length || 1, rangeDays <= 45 ? 6 : 5);
-  const labelStep = labelCount > 1 ? (lineSeries.length - 1) / (labelCount - 1) : 0;
-  const axisXLabels = Array.from({ length: labelCount }, (_, index) =>
-    Math.round(index * labelStep),
-  )
-    .filter((index, position, list) => list.indexOf(index) === position)
-    .filter((index) => lineSeries[index])
-    .map((index) => formatDateDisplay(lineSeries[index].date));
   const tooltipDates = lineSeries.map((point) => point.date);
 
   const hasHistory = lineSeries.length > 1 && lineSeries.some((point) => point.value !== 0);
@@ -1141,42 +1117,32 @@ export default function DashboardPage() {
           footnote="Last 30 days"
         />
       </div>
-      <div className="card chart-card">
-        <div className="chart-header">
-          <div>
-            <h3>Growth curve</h3>
-            <p className="muted">
-              Net worth trend for the selected range ({growthLabel}).
-            </p>
+      {isFiltering ? (
+        <div className="card chart-card">
+          <div className="chart-header">
+            <div>
+              <h3>Growth curve</h3>
+              <p className="muted">
+                Net worth trend for the selected range ({growthLabel}).
+              </p>
+            </div>
+            <DateRangePicker value={range} onChange={setRange} />
           </div>
-          <DateRangePicker value={range} onChange={setRange} />
-        </div>
-        {isFiltering ? (
           <LoadingSkeleton label="Refreshing asset growth" lines={4} />
-        ) : (
-          <div className="chart-surface chart-axis-surface">
-            <LineChart
-              points={linePoints}
-              labels={tooltipDates}
-              formatLabel={formatDateDisplay}
-              formatValue={(value) => formatCurrency(value, displayCurrency)}
-              showAxisLabels={false}
-            />
-            <span className="chart-axis-title y">Value</span>
-            <span className="chart-axis-title x">Date</span>
-            <div className="chart-axis-y">
-              {axisYLabels.map((label, index) => (
-                <span key={`${label}-${index}`}>{label}</span>
-              ))}
-            </div>
-            <div className="chart-axis-x">
-              {axisXLabels.map((label, index) => (
-                <span key={`${label}-${index}`}>{label}</span>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        <ChartPanel
+          title="Growth curve"
+          description={`Net worth trend for the selected range (${growthLabel}).`}
+          points={linePoints}
+          labels={tooltipDates}
+          formatLabel={formatDateDisplay}
+          formatValue={(value) => formatCurrency(value, displayCurrency)}
+          axisTitleX="Date"
+          axisTitleY="Value"
+          headerExtras={<DateRangePicker value={range} onChange={setRange} />}
+        />
+      )}
       <div className="card list-card">
         <div className="list-row list-header columns-7">
           <span>Symbol</span>

@@ -443,6 +443,21 @@ textarea:focus-visible,
   pointer-events: none;
 }
 
+.chart-widget-surface {
+  padding: 0;
+  height: 440px;
+  overflow: hidden;
+}
+
+.tradingview-widget {
+  width: 100%;
+  height: 100%;
+}
+
+.heatmap-widget {
+  height: 420px;
+}
+
 .heatmap-embed {
   margin-top: 24px;
   display: flex;

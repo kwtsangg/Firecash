@@ -1,17 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { CandlestickChart } from "../components/Charts";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import EmptyState from "../components/EmptyState";
 import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
-import {
-  Candle,
-  MarketOverviewItem,
-  fetchAssetSymbols,
-  fetchCandles,
-  fetchMarketOverview,
-} from "../api/market";
+import { MarketOverviewItem, fetchAssetSymbols, fetchMarketOverview } from "../api/market";
 import { formatCurrency } from "../utils/currency";
-import { formatDateDisplay } from "../utils/date";
 import { formatApiErrorDetail } from "../utils/errorMessages";
 import { pageTitles } from "../utils/pageTitles";
 import { usePageMeta } from "../utils/pageMeta";
@@ -29,14 +21,6 @@ const POPULAR_SYMBOLS = [
   "SPY",
   "QQQ",
   "0700.HK",
-];
-
-const RANGE_PRESETS = [
-  { label: "1M", days: 30 },
-  { label: "3M", days: 90 },
-  { label: "6M", days: 180 },
-  { label: "1Y", days: 365 },
-  { label: "Max", days: null },
 ];
 
 const OVERVIEW_SYMBOLS = [
@@ -72,18 +56,16 @@ export default function StockMarketPage() {
   usePageMeta({ title: pageTitles.stockMarket });
   const [symbols, setSymbols] = useState<string[]>([]);
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
-  const [candles, setCandles] = useState<Candle[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [candlesError, setCandlesError] = useState<string | null>(null);
-  const [candlesErrorDetails, setCandlesErrorDetails] = useState<string[]>([]);
   const [query, setQuery] = useState("");
-  const [rangeDays, setRangeDays] = useState<number | null>(90);
   const [isOverviewLoading, setIsOverviewLoading] = useState(false);
   const [overviewError, setOverviewError] = useState<string | null>(null);
   const [overviewErrorDetails, setOverviewErrorDetails] = useState<string[]>([]);
   const [symbolsError, setSymbolsError] = useState<string | null>(null);
   const [symbolsErrorDetails, setSymbolsErrorDetails] = useState<string[]>([]);
   const [overview, setOverview] = useState<MarketOverviewItem[]>([]);
+  const chartContainerRef = useRef<HTMLDivElement | null>(null);
+  const heatmapContainerRef = useRef<HTMLDivElement | null>(null);
+  const [chartKey, setChartKey] = useState(0);
   const displayCurrency = selectedSymbol ? currencyFromSymbol(selectedSymbol) : "USD";
 
   const loadSymbols = useCallback(async () => {
@@ -143,36 +125,79 @@ export default function StockMarketPage() {
     return symbols.filter((symbol) => symbol.includes(upper));
   }, [query, symbols]);
 
-  const displayedCandles = useMemo(() => {
-    if (rangeDays === null) {
-      return candles;
-    }
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - rangeDays);
-    return candles.filter((candle) => new Date(candle.date) >= cutoff);
-  }, [candles, rangeDays]);
+  const injectAdvancedChart = useCallback(
+    (symbol: string) => {
+      if (!chartContainerRef.current) {
+        return;
+      }
+      chartContainerRef.current.innerHTML = "";
+      const script = document.createElement("script");
+      script.src =
+        "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+      script.async = true;
+      script.innerHTML = JSON.stringify({
+        autosize: true,
+        symbol,
+        interval: "D",
+        timezone: "Etc/UTC",
+        theme: "dark",
+        style: "1",
+        locale: "en",
+        allow_symbol_change: false,
+        save_image: false,
+        support_host: "https://www.tradingview.com",
+        hide_side_toolbar: false,
+        hide_top_toolbar: false,
+      });
+      chartContainerRef.current.appendChild(script);
+    },
+    [chartContainerRef],
+  );
 
-  const loadCandles = async (symbol: string) => {
-    setSelectedSymbol(symbol);
-    setIsLoading(true);
-    setCandlesError(null);
-    setCandlesErrorDetails([]);
-    try {
-      const response = await fetchCandles(symbol);
-      setCandles(response);
-    } catch (error) {
-      setCandles([]);
-      setCandlesError("Unable to load candles. Try again or refresh later.");
-      const detail = formatApiErrorDetail(error);
-      setCandlesErrorDetails(detail ? [detail] : []);
-    } finally {
-      setIsLoading(false);
+  const injectHeatmap = useCallback(() => {
+    if (!heatmapContainerRef.current) {
+      return;
     }
+    heatmapContainerRef.current.innerHTML = "";
+    const script = document.createElement("script");
+    script.src = "https://s3.tradingview.com/external-embedding/embed-widget-heatmap.js";
+    script.async = true;
+    script.innerHTML = JSON.stringify({
+      dataSource: "SPX500",
+      grouping: "sector",
+      blockSize: "market_cap_basic",
+      blockColor: "change",
+      locale: "en",
+      symbolUrl: "",
+      colorTheme: "dark",
+      hasTopBar: false,
+      isDataSetEnabled: false,
+      isZoomEnabled: true,
+      hasSymbolTooltip: true,
+      width: "100%",
+      height: "100%",
+    });
+    heatmapContainerRef.current.appendChild(script);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedSymbol) {
+      return;
+    }
+    injectAdvancedChart(selectedSymbol);
+  }, [chartKey, injectAdvancedChart, selectedSymbol]);
+
+  useEffect(() => {
+    injectHeatmap();
+  }, [injectHeatmap]);
+
+  const handleSymbolSelect = (symbol: string) => {
+    setSelectedSymbol(symbol);
   };
 
-  const retryCandles = () => {
+  const refreshChart = () => {
     if (selectedSymbol) {
-      loadCandles(selectedSymbol);
+      setChartKey((prev) => prev + 1);
     }
   };
 
@@ -182,7 +207,7 @@ export default function StockMarketPage() {
         <div>
           <h1>{pageTitles.stockMarket}</h1>
           <p className="muted">Explore daily price action for tracked symbols.</p>
-          <p className="muted">Price source: Stooq.</p>
+          <p className="muted">Charts powered by TradingView.</p>
         </div>
       </header>
       <div className="card">
@@ -195,14 +220,6 @@ export default function StockMarketPage() {
             <button className="pill" type="button" onClick={retryOverview}>
               Refresh overview
             </button>
-            <a
-              className="pill"
-              href="https://finviz.com/map.ashx"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Open full heatmap
-            </a>
           </div>
         </div>
         {overviewError ? (
@@ -248,23 +265,28 @@ export default function StockMarketPage() {
         <div className="heatmap-embed">
           <div className="heatmap-header">
             <div>
-              <h4>Finviz heatmap</h4>
-              <p className="muted">Live sector performance without leaving Firecash.</p>
+              <h4>Market heatmap</h4>
+              <p className="muted">Live sector performance powered by TradingView.</p>
             </div>
+            <a
+              className="pill"
+              href="https://www.tradingview.com/heatmap/stock/"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open full heatmap
+            </a>
           </div>
-          <iframe
-            title="Finviz market heatmap"
-            src="https://finviz.com/map.ashx"
-            className="heatmap-frame"
-            loading="lazy"
-          />
+          <div className="heatmap-widget chart-widget-surface">
+            <div className="tradingview-widget" ref={heatmapContainerRef} />
+          </div>
         </div>
       </div>
       <div className="card">
         <div className="chart-header">
           <div>
             <h3>Symbol explorer</h3>
-            <p className="muted">Pick a symbol to inspect candles and ranges.</p>
+            <p className="muted">Pick a symbol to inspect the TradingView chart.</p>
           </div>
           <input
             className="search-input"
@@ -298,7 +320,7 @@ export default function StockMarketPage() {
                 type="button"
                 key={symbol}
                 className={`symbol-card ${selectedSymbol === symbol ? "active" : ""}`}
-                onClick={() => loadCandles(symbol)}
+                onClick={() => handleSymbolSelect(symbol)}
               >
                 <span>{symbol}</span>
                 <span className="muted">Daily</span>
@@ -311,63 +333,24 @@ export default function StockMarketPage() {
         <div className="chart-header">
           <div>
             <h3>{selectedSymbol ?? "Select a symbol"}</h3>
-            <p className="muted">Daily candle chart.</p>
+            <p className="muted">Daily chart powered by TradingView.</p>
           </div>
           <div className="toolbar">
-            <span className="muted">Resolution</span>
-            <button className="pill" type="button" disabled>
-              1D
-            </button>
-            {RANGE_PRESETS.map((preset) => (
-              <button
-                key={preset.label}
-                type="button"
-                className="pill"
-                onClick={() => setRangeDays(preset.days)}
-              >
-                {preset.label}
-              </button>
-            ))}
-            <button className="pill" type="button" onClick={retryCandles} disabled={!selectedSymbol}>
-              Refresh candles
+            <button className="pill" type="button" onClick={refreshChart} disabled={!selectedSymbol}>
+              Refresh chart
             </button>
           </div>
         </div>
-        <div className="chart-surface">
-          {isLoading ? (
-            <LoadingState
-              title="Loading candles"
-              description="Fetching the latest daily price moves."
-              className="loading-state-inline"
-            />
-          ) : candlesError ? (
-            <ErrorState
-              headline={candlesError}
-              details={candlesErrorDetails}
-              onRetry={retryCandles}
-              retryLabel="Try again"
-            />
-          ) : displayedCandles.length === 0 && selectedSymbol ? (
-            <EmptyState
-              title="No candles yet"
-              description="Daily candles will appear once pricing data arrives."
-              actionLabel="Refresh candles"
-              onAction={retryCandles}
-              actionHint="Try again in a moment for fresh data."
-            />
-          ) : displayedCandles.length === 0 ? (
+        <div className="chart-surface chart-widget-surface">
+          {selectedSymbol ? (
+            <div className="tradingview-widget" ref={chartContainerRef} />
+          ) : (
             <EmptyState
               title="Select a symbol"
               description="Choose a symbol from the list to visualize its price history."
               actionLabel="Browse symbols"
               onAction={() => setQuery("")}
               actionHint="Use the search field to narrow the list."
-            />
-          ) : (
-            <CandlestickChart
-              candles={displayedCandles}
-              formatValue={(value) => formatCurrency(value, displayCurrency)}
-              formatLabel={formatDateDisplay}
             />
           )}
         </div>

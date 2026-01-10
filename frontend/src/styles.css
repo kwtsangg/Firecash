@@ -448,6 +448,14 @@ textarea:focus-visible,
   background: #0f1220;
 }
 
+.heatmap-frame.is-hidden {
+  display: none;
+}
+
+.heatmap-fallback {
+  margin-bottom: 16px;
+}
+
 .chart-axis-title.y {
   left: 6px;
   top: 50%;
